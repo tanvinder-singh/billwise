@@ -51,6 +51,7 @@
         case 'invoices':    renderInvoiceList(); break;
         case 'invoice':     renderInvoiceDetail(param); break;
         case 'reports':     renderReports(); break;
+        case 'admin':       renderAdmin(); break;
         case 'settings':    renderSettings(); break;
         default: renderOverview();
       }
@@ -239,6 +240,10 @@
       currentUser = data.user;
       $topAvatar.textContent = (currentUser.name || 'U').charAt(0).toUpperCase();
       $topName.textContent = currentUser.business_name || currentUser.name;
+      if (currentUser.role === 'superadmin') {
+        var adminNav = document.getElementById('adminNavItem');
+        if (adminNav) adminNav.style.display = '';
+      }
       window.goTo('overview');
     }).catch(function () { logout(); });
   }
@@ -1798,6 +1803,149 @@
         $topName.textContent = currentUser.business_name || currentUser.name;
         showToast('Settings saved!', 'success');
       });
+    });
+  }
+
+  // ── Admin Panel ─────────────────────────────────────────────
+  function renderAdmin() {
+    $pageTitle.textContent = 'Admin Panel';
+    if (!currentUser || currentUser.role !== 'superadmin') {
+      $content.innerHTML = '<div class="empty-state">Access denied. Admin privileges required.</div>';
+      return;
+    }
+    $content.innerHTML = '<p style="color:var(--text-muted)">Loading users...</p>';
+    loadAdminUsers('');
+  }
+
+  function loadAdminUsers(query) {
+    var url = '/api/admin/users' + (query ? '?q=' + encodeURIComponent(query) : '');
+    api('GET', url).then(function (data) {
+      if (data.error) { showToast(data.error, 'error'); return; }
+      var userList = data.users || [];
+
+      var html = '<div class="admin-panel">' +
+        '<div class="page-actions">' +
+          '<div class="page-search">' +
+            '<svg width="16" height="16" fill="none" stroke="var(--text-muted)" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>' +
+            '<input type="text" id="adminSearch" placeholder="Search by name, email or phone..." autocomplete="off" value="' + esc(query) + '">' +
+          '</div>' +
+          '<span style="color:var(--text-muted);font-size:0.875rem">' + userList.length + ' users</span>' +
+        '</div>';
+
+      html += '<div class="table-card"><div class="table-header"><h3>All Users (' + userList.length + ')</h3></div>';
+      if (userList.length) {
+        html += '<div class="table-wrap"><table><thead><tr>' +
+          '<th>Name</th><th>Email</th><th>Phone</th><th>Business</th><th>Role</th><th>Registered</th><th>Actions</th>' +
+          '</tr></thead><tbody>';
+        userList.forEach(function (u) {
+          var roleBadge = u.role === 'superadmin'
+            ? '<span class="badge badge-admin">superadmin</span>'
+            : '<span class="badge badge-user">user</span>';
+          html += '<tr>' +
+            '<td><strong>' + esc(u.name || '') + '</strong></td>' +
+            '<td>' + esc(u.email || '-') + '</td>' +
+            '<td>' + esc(u.phone || '-') + '</td>' +
+            '<td>' + esc(u.business_name || '-') + '</td>' +
+            '<td>' + roleBadge + '</td>' +
+            '<td>' + formatDate(u.created_at) + '</td>' +
+            '<td class="admin-actions">' +
+              '<button type="button" class="btn btn-outline btn-sm admin-edit-btn" data-id="' + u.id + '" data-name="' + esc(u.name || '') + '" data-email="' + esc(u.email || '') + '" data-phone="' + esc(u.phone || '') + '" data-role="' + esc(u.role || 'user') + '" data-biz="' + esc(u.business_name || '') + '">Edit</button>' +
+              '<button type="button" class="btn btn-danger btn-sm admin-del-btn" data-id="' + u.id + '" data-name="' + esc(u.name || '') + '">Delete</button>' +
+            '</td></tr>';
+        });
+        html += '</tbody></table></div>';
+      } else {
+        html += '<div class="empty-state">No users found.</div>';
+      }
+      html += '</div></div>';
+
+      // Edit modal placeholder
+      html += '<div class="admin-modal-overlay" id="adminModal" style="display:none">' +
+        '<div class="admin-modal">' +
+          '<div class="admin-modal-header"><h3>Edit User</h3><button type="button" class="ap-close" id="adminModalClose">&times;</button></div>' +
+          '<div class="admin-modal-body">' +
+            '<div class="form-grid">' +
+              '<div class="form-group"><label>Name</label><input id="aeditName"></div>' +
+              '<div class="form-group"><label>Email</label><input id="aeditEmail" type="email"></div>' +
+              '<div class="form-group"><label>Phone</label><input id="aeditPhone"></div>' +
+              '<div class="form-group"><label>Business Name</label><input id="aeditBiz"></div>' +
+              '<div class="form-group"><label>Role</label><select id="aeditRole"><option value="user">user</option><option value="superadmin">superadmin</option></select></div>' +
+            '</div>' +
+          '</div>' +
+          '<div class="admin-modal-footer">' +
+            '<button type="button" class="btn btn-ghost" id="adminModalCancel">Cancel</button>' +
+            '<button type="button" class="btn btn-primary" id="adminModalSave">Save Changes</button>' +
+          '</div>' +
+        '</div></div>';
+
+      $content.innerHTML = html;
+
+      // Search
+      var searchTimer = null;
+      document.getElementById('adminSearch').addEventListener('input', function () {
+        var q = this.value.trim();
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(function () { loadAdminUsers(q); }, 300);
+      });
+
+      // Delete buttons
+      $content.querySelectorAll('.admin-del-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          var userId = btn.getAttribute('data-id');
+          var userName = btn.getAttribute('data-name');
+          if (!confirm('Delete user "' + userName + '" and ALL their data (invoices, parties, products)? This cannot be undone.')) return;
+          btn.disabled = true; btn.textContent = 'Deleting...';
+          api('DELETE', '/api/admin/users/' + userId).then(function (d) {
+            if (d.error) { showToast(d.error, 'error'); btn.disabled = false; btn.textContent = 'Delete'; return; }
+            showToast(d.message || 'User deleted', 'success');
+            loadAdminUsers(document.getElementById('adminSearch') ? document.getElementById('adminSearch').value.trim() : '');
+          }).catch(function () { showToast('Failed to delete user', 'error'); btn.disabled = false; btn.textContent = 'Delete'; });
+        });
+      });
+
+      // Edit buttons
+      var editUserId = null;
+      $content.querySelectorAll('.admin-edit-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          editUserId = btn.getAttribute('data-id');
+          document.getElementById('aeditName').value = btn.getAttribute('data-name');
+          document.getElementById('aeditEmail').value = btn.getAttribute('data-email');
+          document.getElementById('aeditPhone').value = btn.getAttribute('data-phone');
+          document.getElementById('aeditBiz').value = btn.getAttribute('data-biz');
+          document.getElementById('aeditRole').value = btn.getAttribute('data-role');
+          document.getElementById('adminModal').style.display = '';
+        });
+      });
+
+      // Modal close
+      var closeModal = function () { document.getElementById('adminModal').style.display = 'none'; editUserId = null; };
+      document.getElementById('adminModalClose').addEventListener('click', closeModal);
+      document.getElementById('adminModalCancel').addEventListener('click', closeModal);
+      document.getElementById('adminModal').addEventListener('click', function (e) {
+        if (e.target === this) closeModal();
+      });
+
+      // Modal save
+      document.getElementById('adminModalSave').addEventListener('click', function () {
+        if (!editUserId) return;
+        var saveBtn = this;
+        saveBtn.disabled = true; saveBtn.textContent = 'Saving...';
+        api('PUT', '/api/admin/users/' + editUserId, {
+          name: document.getElementById('aeditName').value.trim(),
+          email: document.getElementById('aeditEmail').value.trim(),
+          phone: document.getElementById('aeditPhone').value.trim(),
+          business_name: document.getElementById('aeditBiz').value.trim(),
+          role: document.getElementById('aeditRole').value
+        }).then(function (d) {
+          if (d.error) { showToast(d.error, 'error'); saveBtn.disabled = false; saveBtn.textContent = 'Save Changes'; return; }
+          showToast(d.message || 'User updated', 'success');
+          closeModal();
+          loadAdminUsers(document.getElementById('adminSearch') ? document.getElementById('adminSearch').value.trim() : '');
+        }).catch(function () { showToast('Failed to update user', 'error'); saveBtn.disabled = false; saveBtn.textContent = 'Save Changes'; });
+      });
+    }).catch(function (err) {
+      console.error(err);
+      $content.innerHTML = '<div class="empty-state">Failed to load users.</div>';
     });
   }
 

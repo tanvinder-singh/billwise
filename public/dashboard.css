@@ -826,6 +826,43 @@ tr:hover td { background:rgba(241,245,249,0.5); }
   .invoice-print tr { page-break-inside:avoid; }
 }
 
+/* ============================================
+   Admin Panel
+   ============================================ */
+.admin-panel .table-card { margin-top:0; }
+.admin-actions { display:flex; gap:6px; white-space:nowrap; }
+
+/* Role badges */
+.badge-admin { background:#ede9fe; color:#6d28d9; }
+.badge-user { background:#f1f5f9; color:#64748b; }
+
+/* Admin edit modal */
+.admin-modal-overlay {
+  position:fixed; inset:0; background:rgba(0,0,0,0.45); z-index:200;
+  display:flex; align-items:center; justify-content:center;
+}
+.admin-modal {
+  background:var(--surface); border-radius:var(--radius); box-shadow:var(--shadow-lg);
+  width:100%; max-width:520px; max-height:90vh; overflow-y:auto;
+}
+.admin-modal-header {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:18px 24px; border-bottom:1px solid var(--border);
+}
+.admin-modal-header h3 {
+  margin:0; font-family:'Plus Jakarta Sans',sans-serif; font-size:1.125rem; font-weight:700;
+}
+.admin-modal-body { padding:24px; }
+.admin-modal-footer {
+  display:flex; justify-content:flex-end; gap:12px;
+  padding:16px 24px; border-top:1px solid var(--border); background:var(--bg);
+  border-radius:0 0 var(--radius) var(--radius);
+}
+@media(max-width:640px) {
+  .admin-modal { max-width:calc(100% - 32px); margin:16px; }
+  .admin-modal-body .form-grid { grid-template-columns:1fr; }
+}
+
 /* Autocomplete dropdown */
 .ac-wrap { position:relative; }
 .ac-dropdown {

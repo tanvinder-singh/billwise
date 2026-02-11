@@ -33,8 +33,10 @@ async function initDB() {
         terms_conditions TEXT DEFAULT '',
         invoice_theme VARCHAR(20) DEFAULT 'classic',
         gstin_api_key VARCHAR(100) DEFAULT '',
+        role VARCHAR(20) DEFAULT 'user',
         created_at TIMESTAMP DEFAULT NOW()
       );
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(20) DEFAULT 'user';
 
       CREATE TABLE IF NOT EXISTS invoices (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

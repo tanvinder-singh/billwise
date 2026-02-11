@@ -41,7 +41,7 @@ function generateOTP() {
 }
 
 function signToken(user) {
-  return jwt.sign({ id: user.id, email: user.email, name: user.name }, JWT_SECRET, { expiresIn: '7d' });
+  return jwt.sign({ id: user.id, email: user.email, name: user.name, role: user.role || 'user' }, JWT_SECRET, { expiresIn: '7d' });
 }
 
 function safeUser(u) {
@@ -62,6 +62,14 @@ function auth(req, res, next) {
   } catch (e) {
     res.status(401).json({ error: 'Invalid or expired token' });
   }
+}
+
+// Admin middleware
+function adminAuth(req, res, next) {
+  if (!req.user || req.user.role !== 'superadmin') {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+  next();
 }
 
 // ─── AUTH ROUTES ─────────────────────────────────────────────
@@ -623,6 +631,84 @@ app.get('/api/reports', auth, async (req, res) => {
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'Failed to generate report' });
+  }
+});
+
+// ─── ADMIN ROUTES ───────────────────────────────────────────
+
+// List all users (with search)
+app.get('/api/admin/users', auth, adminAuth, async (req, res) => {
+  try {
+    const q = (req.query.q || '').trim();
+    const { pool } = require('./database');
+    let sql, params;
+    if (q) {
+      sql = `SELECT id, name, email, phone, business_name, role, created_at
+             FROM users WHERE name ILIKE $1 OR email ILIKE $1 OR phone ILIKE $1
+             ORDER BY created_at DESC`;
+      params = ['%' + q + '%'];
+    } else {
+      sql = `SELECT id, name, email, phone, business_name, role, created_at
+             FROM users ORDER BY created_at DESC`;
+      params = [];
+    }
+    const result = await pool.query(sql, params);
+    res.json({ users: result.rows, total: result.rows.length });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Failed to fetch users' });
+  }
+});
+
+// Get single user details + counts
+app.get('/api/admin/users/:id', auth, adminAuth, async (req, res) => {
+  try {
+    const user = await users.findOne({ id: req.params.id });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    const invCount = await invoices.count({ user_id: req.params.id });
+    const partyCount = await parties.count({ user_id: req.params.id });
+    const productCount = await products.count({ user_id: req.params.id });
+    const safe = safeUser(user);
+    res.json({ user: safe, invoice_count: invCount, party_count: partyCount, product_count: productCount });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Failed to fetch user' });
+  }
+});
+
+// Edit user
+app.put('/api/admin/users/:id', auth, adminAuth, async (req, res) => {
+  try {
+    const { name, email, phone, role, business_name } = req.body;
+    const setData = {};
+    if (name !== undefined) setData.name = name;
+    if (email !== undefined) setData.email = email;
+    if (phone !== undefined) setData.phone = phone;
+    if (role !== undefined) setData.role = role;
+    if (business_name !== undefined) setData.business_name = business_name;
+    if (!Object.keys(setData).length) return res.status(400).json({ error: 'No fields to update' });
+    await users.update({ id: req.params.id }, { $set: setData });
+    const user = await users.findOne({ id: req.params.id });
+    res.json({ user: safeUser(user), message: 'User updated' });
+  } catch (e) {
+    console.error(e);
+    if (e.code === '23505') return res.status(409).json({ error: 'Email or phone already in use' });
+    res.status(500).json({ error: 'Failed to update user' });
+  }
+});
+
+// Delete user (cascades via FK)
+app.delete('/api/admin/users/:id', auth, adminAuth, async (req, res) => {
+  try {
+    if (req.params.id === req.user.id) {
+      return res.status(400).json({ error: 'Cannot delete your own account' });
+    }
+    const removed = await users.remove({ id: req.params.id });
+    if (removed === 0) return res.status(404).json({ error: 'User not found' });
+    res.json({ message: 'User and all their data deleted' });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Failed to delete user' });
   }
 });
 
