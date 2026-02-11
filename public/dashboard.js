@@ -1228,7 +1228,8 @@
       html += '<div class="inv-title-bar"><h2>Tax Invoice</h2></div>';
 
       // Business header
-      html += '<div class="inv-biz-header">';
+      html += '<div class="inv-biz-header' + (u.logo ? ' has-logo' : '') + '">';
+      html += '<div class="biz-info">';
       html += '<h3 class="biz-name">' + esc(u.business_name || u.name || 'BillWise') + '</h3>';
       var addrParts = [u.address, u.city, u.state, u.pincode].filter(Boolean);
       if (addrParts.length) html += '<p>' + addrParts.join(', ') + '</p>';
@@ -1240,6 +1241,10 @@
       if (u.gstin) gstLine.push('GSTIN: ' + u.gstin);
       if (u.state) gstLine.push('State: ' + u.state);
       if (gstLine.length) html += '<p>' + gstLine.join(' \u2003 ') + '</p>';
+      html += '</div>';
+      if (u.logo) {
+        html += '<div class="biz-logo"><img src="' + u.logo + '" alt="Logo"></div>';
+      }
       html += '</div>';
 
       // Bill To + Invoice Details
@@ -1882,7 +1887,20 @@
         fg('City', '<input id="sCity" value="' + esc(u.city) + '">') +
         fg('State', '<select id="sState">' + stateOptions(u.state) + '</select>') +
         fg('Pincode', '<input id="sPin" value="' + esc(u.pincode) + '" maxlength="6" placeholder="400001">') +
-      '</div></div>' +
+      '</div>' +
+      '<div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border)">' +
+        '<label style="font-size:0.875rem;font-weight:600;color:var(--text);display:block;margin-bottom:8px">Business Logo</label>' +
+        '<p style="color:var(--text-muted);font-size:0.8125rem;margin:0 0 10px">Upload your firm\'s logo. It will appear on the top-right of your invoices.</p>' +
+        '<div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">' +
+          (u.logo ? '<div id="logoPreview"><img src="' + u.logo + '" style="max-height:70px;max-width:180px;border:1px solid var(--border);border-radius:8px;padding:4px;background:#fff"></div>' : '<div id="logoPreview"></div>') +
+          '<div>' +
+            '<input type="file" id="logoUpload" accept="image/*" style="font-size:0.875rem">' +
+            '<input type="hidden" id="logoData" value="">' +
+            (u.logo ? '<br><button type="button" class="btn btn-ghost btn-sm" id="removeLogo" style="margin-top:6px;color:#dc2626">Remove Logo</button>' : '') +
+          '</div>' +
+        '</div>' +
+      '</div>' +
+      '</div>' +
 
       '<div class="form-card"><h3>Bank & Payment Details</h3>' +
       '<p style="color:var(--text-muted);font-size:0.875rem;margin:0 0 16px">Bank details shown on your invoices for customer payments.</p>' +
@@ -2059,6 +2077,31 @@
       reader.readAsDataURL(file);
     });
 
+    // Logo upload
+    document.getElementById('logoUpload').addEventListener('change', function (e) {
+      var file = e.target.files[0];
+      if (!file) return;
+      if (file.size > 500000) { showToast('Logo must be under 500KB', 'error'); e.target.value = ''; return; }
+      var reader = new FileReader();
+      reader.onload = function (ev) {
+        document.getElementById('logoData').value = ev.target.result;
+        document.getElementById('logoPreview').innerHTML = '<img src="' + ev.target.result + '" style="max-height:70px;max-width:180px;border:1px solid var(--border);border-radius:8px;padding:4px;background:#fff">';
+      };
+      reader.readAsDataURL(file);
+    });
+
+    // Remove logo button
+    var removLogoBtn = document.getElementById('removeLogo');
+    if (removLogoBtn) {
+      removLogoBtn.addEventListener('click', function () {
+        document.getElementById('logoData').value = '__REMOVE__';
+        document.getElementById('logoPreview').innerHTML = '';
+        document.getElementById('logoUpload').value = '';
+        this.style.display = 'none';
+        showToast('Logo will be removed when you save', 'warning');
+      });
+    }
+
     // Form submit
     document.getElementById('settingsForm').addEventListener('submit', function (e) {
       e.preventDefault();
@@ -2079,7 +2122,12 @@
         upi_qr: document.getElementById('qrData').value || (currentUser ? currentUser.upi_qr : '') || '',
         signature: document.getElementById('sigData').value || (currentUser ? currentUser.signature : '') || '',
         invoice_theme: (document.querySelector('input[name="invoiceTheme"]:checked') || {}).value || 'classic',
-        gstin_api_key: document.getElementById('sGstApiKey').value.trim()
+        gstin_api_key: document.getElementById('sGstApiKey').value.trim(),
+        logo: (function () {
+          var ld = document.getElementById('logoData').value;
+          if (ld === '__REMOVE__') return '';
+          return ld || (currentUser ? currentUser.logo : '') || '';
+        })()
       };
       var submitBtn = e.target.querySelector('button[type="submit"]');
       if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Saving...'; }

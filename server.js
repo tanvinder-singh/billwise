@@ -237,13 +237,14 @@ app.get('/api/auth/me', auth, async (req, res) => {
 app.put('/api/auth/profile', auth, async (req, res) => {
   const { name, business_name, gstin, address, city, state, pincode, bank_name, account_no,
           ifsc_code, account_holder, terms_conditions, upi_id, upi_qr, signature,
-          invoice_theme, gstin_api_key } = req.body;
+          invoice_theme, gstin_api_key, logo } = req.body;
   const setData = {
     name: name || '', business_name: business_name || '', gstin: gstin || '',
     address: address || '', city: city || '', state: state || '', pincode: pincode || '',
     bank_name: bank_name || '', account_no: account_no || '', ifsc_code: ifsc_code || '',
     account_holder: account_holder || '', terms_conditions: terms_conditions || '',
-    upi_id: upi_id || '', upi_qr: upi_qr || '', signature: signature || ''
+    upi_id: upi_id || '', upi_qr: upi_qr || '', signature: signature || '',
+    logo: logo || ''
   };
   if (invoice_theme !== undefined) setData.invoice_theme = invoice_theme;
   if (gstin_api_key !== undefined) setData.gstin_api_key = gstin_api_key;
