@@ -264,7 +264,7 @@ app.get('/api/parties', auth, async (req, res) => {
       sql = `SELECT * FROM parties WHERE user_id = $1 AND name ILIKE $2 ORDER BY updated_at DESC LIMIT 20`;
       params = [req.user.id, '%' + q + '%'];
     } else {
-      sql = `SELECT * FROM parties WHERE user_id = $1 ORDER BY updated_at DESC LIMIT 20`;
+      sql = `SELECT * FROM parties WHERE user_id = $1 ORDER BY name ASC`;
       params = [req.user.id];
     }
     const result = await pool.query(sql, params);
@@ -273,6 +273,22 @@ app.get('/api/parties', auth, async (req, res) => {
   } catch (e) {
     console.error(e);
     res.json({ parties: [] });
+  }
+});
+
+// Get single party
+app.get('/api/parties/:id', auth, async (req, res) => {
+  try {
+    const { pool } = require('./database');
+    const result = await pool.query('SELECT * FROM parties WHERE id = $1 AND user_id = $2', [req.params.id, req.user.id]);
+    if (!result.rows.length) return res.status(404).json({ error: 'Party not found' });
+    const party = result.rows[0];
+    party._id = party.id;
+    ['opening_balance','credit_limit'].forEach(k => { if (party[k] !== undefined) party[k] = parseFloat(party[k]); });
+    res.json({ party });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Failed to fetch party' });
   }
 });
 
@@ -286,7 +302,7 @@ app.get('/api/products', auth, async (req, res) => {
       sql = `SELECT * FROM products WHERE user_id = $1 AND name ILIKE $2 ORDER BY updated_at DESC LIMIT 20`;
       params = [req.user.id, '%' + q + '%'];
     } else {
-      sql = `SELECT * FROM products WHERE user_id = $1 ORDER BY updated_at DESC LIMIT 20`;
+      sql = `SELECT * FROM products WHERE user_id = $1 ORDER BY name ASC`;
       params = [req.user.id];
     }
     const result = await pool.query(sql, params);
@@ -299,6 +315,22 @@ app.get('/api/products', auth, async (req, res) => {
   } catch (e) {
     console.error(e);
     res.json({ products: [] });
+  }
+});
+
+// Get single product
+app.get('/api/products/:id', auth, async (req, res) => {
+  try {
+    const { pool } = require('./database');
+    const result = await pool.query('SELECT * FROM products WHERE id = $1 AND user_id = $2', [req.params.id, req.user.id]);
+    if (!result.rows.length) return res.status(404).json({ error: 'Product not found' });
+    const product = result.rows[0];
+    product._id = product.id;
+    ['mrp','rate','gst'].forEach(k => { if (product[k] !== undefined) product[k] = parseFloat(product[k]); });
+    res.json({ product });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Failed to fetch product' });
   }
 });
 
@@ -429,10 +461,15 @@ app.post('/api/products', auth, async (req, res) => {
 // Update a party
 app.put('/api/parties/:id', auth, async (req, res) => {
   try {
-    const { name, phone, email, address, gstin, state } = req.body;
+    const { name, phone, email, address, gstin, state, gst_type, billing_address,
+            shipping_address, opening_balance, credit_limit, payment_terms, notes } = req.body;
     await parties.update({ id: req.params.id, user_id: req.user.id }, {
       $set: { name: name || '', phone: phone || '', email: email || '',
         address: address || '', gstin: gstin || '', state: state || '',
+        gst_type: gst_type || '', billing_address: billing_address || '',
+        shipping_address: shipping_address || '',
+        opening_balance: opening_balance || 0, credit_limit: credit_limit || 0,
+        payment_terms: payment_terms || '', notes: notes || '',
         updated_at: new Date() }
     });
     const party = await parties.findOne({ id: req.params.id });

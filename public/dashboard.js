@@ -46,7 +46,9 @@
         case 'parties':     renderParties(); break;
         case 'items':       renderItems(); break;
         case 'add-party':   renderAddParty(); break;
+        case 'edit-party':  renderEditParty(param); break;
         case 'add-item':    renderAddItem(); break;
+        case 'edit-item':   renderEditItem(param); break;
         case 'new-invoice': renderNewInvoice(); break;
         case 'invoices':    renderInvoiceList(); break;
         case 'invoice':     renderInvoiceDetail(param); break;
@@ -519,9 +521,11 @@
       partyList.forEach(function (p) {
         var recv = partyReceivable[p.name] || 0;
         var invCount = partyInvCount[p.name] || 0;
-        html += '<div class="party-card" data-name="' + esc(p.name).toLowerCase() + '">' +
+        var pid = p.id || p._id;
+        html += '<div class="party-card" data-name="' + esc(p.name).toLowerCase() + '" data-id="' + pid + '" style="cursor:pointer">' +
           '<div class="card-actions">' +
-            '<button type="button" class="del" title="Delete" data-id="' + (p.id || p._id) + '"><svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg></button>' +
+            '<button type="button" class="edit-btn" title="Edit" data-id="' + pid + '"><svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>' +
+            '<button type="button" class="del" title="Delete" data-id="' + pid + '"><svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg></button>' +
           '</div>' +
           '<div class="card-name">' + esc(p.name) + '</div>' +
           (p.phone ? '<div class="card-detail">Ph: ' + esc(p.phone) + '</div>' : '') +
@@ -539,6 +543,21 @@
         var q = this.value.trim().toLowerCase();
         document.querySelectorAll('.party-card').forEach(function (card) {
           card.style.display = !q || card.getAttribute('data-name').indexOf(q) !== -1 ? '' : 'none';
+        });
+      });
+
+      // Edit buttons
+      $content.querySelectorAll('.card-actions .edit-btn').forEach(function (btn) {
+        btn.addEventListener('click', function (e) {
+          e.stopPropagation();
+          window.goTo('edit-party', btn.getAttribute('data-id'));
+        });
+      });
+
+      // Card click to edit
+      $content.querySelectorAll('.party-card').forEach(function (card) {
+        card.addEventListener('click', function () {
+          window.goTo('edit-party', card.getAttribute('data-id'));
         });
       });
 
@@ -574,9 +593,11 @@
         html += '<div class="empty-state" style="grid-column:1/-1">No saved items yet. Create an invoice and items will be saved automatically!</div>';
       }
       itemList.forEach(function (item) {
-        html += '<div class="item-card" data-name="' + esc(item.name).toLowerCase() + '">' +
+        var iid = item.id || item._id;
+        html += '<div class="item-card" data-name="' + esc(item.name).toLowerCase() + '" data-id="' + iid + '" style="cursor:pointer">' +
           '<div class="card-actions">' +
-            '<button type="button" class="del" title="Delete" data-id="' + (item.id || item._id) + '"><svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg></button>' +
+            '<button type="button" class="edit-btn" title="Edit" data-id="' + iid + '"><svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>' +
+            '<button type="button" class="del" title="Delete" data-id="' + iid + '"><svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg></button>' +
           '</div>' +
           '<div class="card-name">' + esc(item.name) + '</div>' +
           (item.hsn ? '<div class="card-detail">HSN: ' + esc(item.hsn) + '</div>' : '') +
@@ -593,6 +614,21 @@
         var q = this.value.trim().toLowerCase();
         document.querySelectorAll('.item-card').forEach(function (card) {
           card.style.display = !q || card.getAttribute('data-name').indexOf(q) !== -1 ? '' : 'none';
+        });
+      });
+
+      // Edit buttons
+      $content.querySelectorAll('.card-actions .edit-btn').forEach(function (btn) {
+        btn.addEventListener('click', function (e) {
+          e.stopPropagation();
+          window.goTo('edit-item', btn.getAttribute('data-id'));
+        });
+      });
+
+      // Card click to edit
+      $content.querySelectorAll('.item-card').forEach(function (card) {
+        card.addEventListener('click', function () {
+          window.goTo('edit-item', card.getAttribute('data-id'));
         });
       });
 
@@ -817,6 +853,193 @@
     document.getElementById('apSaveNewBtn').addEventListener('click', function () { saveParty(this, false); });
   }
 
+  // ── Edit Party Page ──────────────────────────────────────────
+  function renderEditParty(partyId) {
+    $pageTitle.textContent = 'Edit Party';
+    $content.innerHTML = '<p style="color:var(--text-muted)">Loading party...</p>';
+
+    api('GET', '/api/parties/' + partyId).then(function (data) {
+      if (data.error) { showToast(data.error, 'error'); window.goTo('parties'); return; }
+      var p = data.party;
+
+      var gstTypes = ['Regular','Composition','Unregistered','Consumer','Deemed Export','SEZ','SEZ Developer','UIN Holder'];
+      var gstTypeOpts = gstTypes.map(function (g) {
+        return '<option value="' + g + '"' + (p.gst_type === g ? ' selected' : '') + '>' + g + '</option>';
+      }).join('');
+
+      var html = '<div class="ap-card">' +
+        '<div class="ap-header">' +
+          '<h3>Edit Party</h3>' +
+          '<button type="button" class="ap-close" onclick="window.goTo(\'parties\')" title="Close">&times;</button>' +
+        '</div>' +
+
+        '<div class="ap-top-row">' +
+          '<div class="ap-field"><label>Party Name <span class="req">*</span></label><input id="apName" placeholder="Party Name" required value="' + esc(p.name || '') + '"></div>' +
+          '<div class="ap-field gstin-field"><label>GSTIN</label><div class="gstin-input-wrap">' +
+            '<input id="apGstin" placeholder="e.g. 07AAACH7409R1ZZ" maxlength="15" value="' + esc(p.gstin || '') + '">' +
+            '<span class="gstin-status" id="gstinStatus"></span></div></div>' +
+          '<div class="ap-field"><label>Phone Number</label><input id="apPhone" placeholder="Phone Number" maxlength="10" value="' + esc(p.phone || '') + '"></div>' +
+        '</div>' +
+
+        '<div class="ap-tabs">' +
+          '<button type="button" class="ap-tab active" data-tab="gst">GST & Address</button>' +
+          '<button type="button" class="ap-tab" data-tab="credit">Credit & Balance</button>' +
+          '<button type="button" class="ap-tab" data-tab="additional">Additional Fields</button>' +
+        '</div>' +
+
+        '<div class="ap-tab-content" id="apTabGst">' +
+          '<div class="ap-gst-row">' +
+            '<div class="ap-gst-left">' +
+              '<div class="ap-field"><label>GST Type</label><select id="apGstType">' + gstTypeOpts + '</select></div>' +
+              '<div class="ap-field"><label>State</label><select id="apState">' + stateOptions(p.state || '') + '</select></div>' +
+            '</div>' +
+            '<div class="ap-addr-col">' +
+              '<label>Billing Address</label>' +
+              '<textarea id="apBillingAddr" rows="5" placeholder="Billing address...">' + esc(p.billing_address || p.address || '') + '</textarea>' +
+            '</div>' +
+            '<div class="ap-addr-col">' +
+              '<label>Shipping Address</label>' +
+              '<div class="ap-ship-toggle"><input type="checkbox" id="apEnableShip"' + (p.shipping_address ? ' checked' : '') + '> <span>Enable Shipping Address</span></div>' +
+              '<textarea id="apShippingAddr" rows="5" placeholder="Same as billing address"' + (p.shipping_address ? '' : ' disabled') + '>' + esc(p.shipping_address || '') + '</textarea>' +
+            '</div>' +
+          '</div>' +
+        '</div>' +
+
+        '<div class="ap-tab-content" id="apTabCredit" style="display:none">' +
+          '<div class="ap-credit-grid">' +
+            '<div class="ap-field"><label>Opening Balance (\u20B9)</label><input id="apBalance" type="number" step="0.01" placeholder="0.00" value="' + (p.opening_balance || '') + '"></div>' +
+            '<div class="ap-field"><label>Credit Limit (\u20B9)</label><input id="apCreditLimit" type="number" step="0.01" placeholder="0.00" value="' + (p.credit_limit || '') + '"></div>' +
+            '<div class="ap-field"><label>Payment Terms</label><select id="apPayTerms">' +
+              '<option value=""' + (!p.payment_terms ? ' selected' : '') + '>None</option>' +
+              '<option value="receipt"' + (p.payment_terms === 'receipt' ? ' selected' : '') + '>Due on Receipt</option>' +
+              '<option value="15"' + (p.payment_terms === '15' ? ' selected' : '') + '>Net 15</option>' +
+              '<option value="30"' + (p.payment_terms === '30' ? ' selected' : '') + '>Net 30</option>' +
+              '<option value="45"' + (p.payment_terms === '45' ? ' selected' : '') + '>Net 45</option>' +
+              '<option value="60"' + (p.payment_terms === '60' ? ' selected' : '') + '>Net 60</option></select></div>' +
+          '</div>' +
+        '</div>' +
+
+        '<div class="ap-tab-content" id="apTabAdditional" style="display:none">' +
+          '<div class="ap-credit-grid">' +
+            '<div class="ap-field"><label>Email ID</label><input id="apEmail" type="email" placeholder="email@example.com" value="' + esc(p.email || '') + '"></div>' +
+            '<div class="ap-field full-width"><label>Notes</label><textarea id="apNotes" rows="3" placeholder="Any notes about this party...">' + esc(p.notes || '') + '</textarea></div>' +
+          '</div>' +
+        '</div>' +
+
+        '<div class="ap-footer">' +
+          '<button type="button" class="btn btn-ghost" onclick="window.goTo(\'parties\')">Cancel</button>' +
+          '<button type="button" class="btn btn-primary" id="apSaveBtn">Update Party</button>' +
+        '</div>' +
+      '</div>';
+
+      $content.innerHTML = html;
+
+      // Tab switching
+      document.querySelectorAll('.ap-tab').forEach(function (tab) {
+        tab.addEventListener('click', function () {
+          document.querySelectorAll('.ap-tab').forEach(function (t) { t.classList.remove('active'); });
+          tab.classList.add('active');
+          document.getElementById('apTabGst').style.display = 'none';
+          document.getElementById('apTabCredit').style.display = 'none';
+          document.getElementById('apTabAdditional').style.display = 'none';
+          var target = tab.getAttribute('data-tab');
+          if (target === 'gst') document.getElementById('apTabGst').style.display = '';
+          else if (target === 'credit') document.getElementById('apTabCredit').style.display = '';
+          else document.getElementById('apTabAdditional').style.display = '';
+        });
+      });
+
+      // Shipping address toggle
+      document.getElementById('apEnableShip').addEventListener('change', function () {
+        document.getElementById('apShippingAddr').disabled = !this.checked;
+        if (!this.checked) document.getElementById('apShippingAddr').value = '';
+      });
+
+      // GSTIN auto-lookup
+      var gstinTimer = null;
+      var $gstinInput = document.getElementById('apGstin');
+      var $gstinStatus = document.getElementById('gstinStatus');
+      $gstinInput.addEventListener('input', function () {
+        var val = $gstinInput.value.replace(/\s/g, '').toUpperCase();
+        $gstinInput.value = val;
+        $gstinStatus.className = 'gstin-status';
+        $gstinStatus.textContent = '';
+        clearTimeout(gstinTimer);
+        if (val.length !== 15) {
+          if (val.length > 0) { $gstinStatus.className = 'gstin-status typing'; $gstinStatus.textContent = val.length + '/15'; }
+          return;
+        }
+        $gstinStatus.className = 'gstin-status loading';
+        $gstinStatus.innerHTML = '<span class="gstin-spinner"></span>';
+        gstinTimer = setTimeout(function () {
+          api('GET', '/api/gstin-lookup/' + val).then(function (res) {
+            if (res.error) {
+              $gstinStatus.className = 'gstin-status invalid';
+              $gstinStatus.textContent = '\u2717';
+              showToast(res.error, 'error');
+              return;
+            }
+            $gstinStatus.className = 'gstin-status valid';
+            $gstinStatus.textContent = '\u2713';
+            if (res.state) {
+              var stateSelect = document.getElementById('apState');
+              for (var i = 0; i < stateSelect.options.length; i++) {
+                if (stateSelect.options[i].value === res.state) { stateSelect.selectedIndex = i; break; }
+              }
+            }
+            if (res.address) document.getElementById('apBillingAddr').value = res.address;
+            if ((res.trade_name || res.legal_name)) {
+              var nameField = document.getElementById('apName');
+              if (!nameField.value.trim()) nameField.value = res.trade_name || res.legal_name;
+            }
+            if (res.gst_type) {
+              var gtSel = document.getElementById('apGstType');
+              var gtVal = res.gst_type.toLowerCase();
+              for (var j = 0; j < gtSel.options.length; j++) {
+                if (gtSel.options[j].value.toLowerCase().indexOf(gtVal) !== -1 ||
+                    gtVal.indexOf(gtSel.options[j].value.toLowerCase()) !== -1) {
+                  gtSel.selectedIndex = j; break;
+                }
+              }
+            }
+            showToast('GSTIN verified!', 'success');
+          }).catch(function () {
+            $gstinStatus.className = 'gstin-status invalid';
+            $gstinStatus.textContent = '\u2717';
+          });
+        }, 300);
+      });
+
+      // Save (update)
+      document.getElementById('apSaveBtn').addEventListener('click', function () {
+        var name = document.getElementById('apName').value.trim();
+        if (!name) { showToast('Party name is required', 'error'); return; }
+        var updData = {
+          name: name,
+          phone: document.getElementById('apPhone').value.trim(),
+          email: document.getElementById('apEmail').value.trim(),
+          gstin: document.getElementById('apGstin').value.trim().toUpperCase(),
+          state: document.getElementById('apState').value,
+          gst_type: document.getElementById('apGstType').value,
+          address: document.getElementById('apBillingAddr').value.trim(),
+          billing_address: document.getElementById('apBillingAddr').value.trim(),
+          shipping_address: document.getElementById('apShippingAddr').value.trim(),
+          opening_balance: parseFloat(document.getElementById('apBalance').value) || 0,
+          credit_limit: parseFloat(document.getElementById('apCreditLimit').value) || 0,
+          payment_terms: document.getElementById('apPayTerms').value,
+          notes: document.getElementById('apNotes').value.trim()
+        };
+        var btn = this;
+        btn.disabled = true; btn.textContent = 'Saving...';
+        api('PUT', '/api/parties/' + partyId, updData).then(function (res) {
+          if (res.error) { showToast(res.error, 'error'); btn.disabled = false; btn.textContent = 'Update Party'; return; }
+          showToast(res.message || 'Party updated!', 'success');
+          window.goTo('parties');
+        }).catch(function () { showToast('Failed to update party', 'error'); btn.disabled = false; btn.textContent = 'Update Party'; });
+      });
+    }).catch(function () { showToast('Failed to load party', 'error'); window.goTo('parties'); });
+  }
+
   // ── Add Item Page ──────────────────────────────────────────
   function renderAddItem() {
     $pageTitle.textContent = 'Add Item';
@@ -865,6 +1088,68 @@
         window.goTo('items');
       }).catch(function () { showToast('Failed to add item', 'error'); btn.disabled = false; btn.textContent = 'Save Item'; });
     });
+  }
+
+  // ── Edit Item Page ──────────────────────────────────────────
+  function renderEditItem(itemId) {
+    $pageTitle.textContent = 'Edit Item';
+    $content.innerHTML = '<p style="color:var(--text-muted)">Loading item...</p>';
+
+    api('GET', '/api/products/' + itemId).then(function (data) {
+      if (data.error) { showToast(data.error, 'error'); window.goTo('items'); return; }
+      var item = data.product;
+
+      var unitOptions = ['Pcs','Kg','Gm','Ltr','Mtr','Sq.Ft','Box','Bag','Dozen','Pair','Set','Roll','Ton','Quintal','Nos','Bundle','Other'];
+      var unitOpts = unitOptions.map(function (u) {
+        return '<option value="' + u + '"' + ((item.unit || 'Pcs') === u ? ' selected' : '') + '>' + u + '</option>';
+      }).join('');
+      var gstOpts = GST_RATES.map(function (r) {
+        return '<option value="' + r + '"' + ((item.gst || 0) === r ? ' selected' : '') + '>' + r + '%</option>';
+      }).join('');
+
+      var html = '<div class="add-form-card">' +
+        '<div class="add-form-header"><h3>Edit Item</h3>' +
+        '<button type="button" class="btn btn-ghost btn-sm" onclick="window.goTo(\'items\')">&larr; Back to Items</button></div>' +
+        '<form id="editItemForm" class="add-form-body" novalidate>' +
+          '<div class="add-form-grid">' +
+            '<div class="form-group"><label>Item Name <span class="req">*</span></label><input id="aiName" placeholder="e.g. Cotton Shirt" required value="' + esc(item.name || '') + '"></div>' +
+            '<div class="form-group"><label>HSN Code</label><input id="aiHsn" placeholder="e.g. 6109" value="' + esc(item.hsn || '') + '"></div>' +
+            '<div class="form-group"><label>Sale Price / Rate <span class="req">*</span></label><input id="aiRate" type="number" step="0.01" min="0" placeholder="0.00" required value="' + (item.rate || '') + '"></div>' +
+            '<div class="form-group"><label>MRP</label><input id="aiMrp" type="number" step="0.01" min="0" placeholder="0.00" value="' + (item.mrp || '') + '"></div>' +
+            '<div class="form-group"><label>GST Rate</label><select id="aiGst">' + gstOpts + '</select></div>' +
+            '<div class="form-group"><label>Unit</label><select id="aiUnit">' + unitOpts + '</select></div>' +
+            '<div class="form-group"><label>Size</label><input id="aiSize" placeholder="e.g. L, XL, 500ml" value="' + esc(item.size || '') + '"></div>' +
+          '</div>' +
+          '<div class="add-form-actions">' +
+            '<button type="button" class="btn btn-ghost" onclick="window.goTo(\'items\')">Cancel</button>' +
+            '<button type="submit" class="btn btn-primary" id="aiSubmitBtn">Update Item</button>' +
+          '</div>' +
+        '</form></div>';
+      $content.innerHTML = html;
+
+      document.getElementById('editItemForm').addEventListener('submit', function (e) {
+        e.preventDefault();
+        var name = document.getElementById('aiName').value.trim();
+        var rate = parseFloat(document.getElementById('aiRate').value) || 0;
+        if (!name) { showToast('Item name is required', 'error'); return; }
+        if (rate <= 0) { showToast('Rate is required', 'error'); return; }
+        var btn = document.getElementById('aiSubmitBtn');
+        btn.disabled = true; btn.textContent = 'Saving...';
+        api('PUT', '/api/products/' + itemId, {
+          name: name,
+          hsn: document.getElementById('aiHsn').value.trim(),
+          rate: rate,
+          mrp: parseFloat(document.getElementById('aiMrp').value) || 0,
+          gst: parseInt(document.getElementById('aiGst').value) || 0,
+          unit: document.getElementById('aiUnit').value,
+          size: document.getElementById('aiSize').value.trim()
+        }).then(function (res) {
+          if (res.error) { showToast(res.error, 'error'); btn.disabled = false; btn.textContent = 'Update Item'; return; }
+          showToast(res.message || 'Item updated!', 'success');
+          window.goTo('items');
+        }).catch(function () { showToast('Failed to update item', 'error'); btn.disabled = false; btn.textContent = 'Update Item'; });
+      });
+    }).catch(function () { showToast('Failed to load item', 'error'); window.goTo('items'); });
   }
 
   // ── Invoice List ───────────────────────────────────────────

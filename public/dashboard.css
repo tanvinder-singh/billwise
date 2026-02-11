@@ -291,6 +291,7 @@ tr:hover td { background:rgba(241,245,249,0.5); }
   transition:all 0.15s; color:var(--text-muted);
 }
 .card-actions button:hover { border-color:var(--primary); color:var(--primary); }
+.card-actions button.edit-btn:hover { border-color:var(--primary); color:var(--primary); background:#ccfbf1; }
 .card-actions button.del:hover { border-color:#dc2626; color:#dc2626; background:#fee2e2; }
 
 /* ============================================
