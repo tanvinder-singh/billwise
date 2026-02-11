@@ -1158,8 +1158,7 @@
     $content.innerHTML = '<p style="color:var(--text-muted)">Loading...</p>';
     api('GET', '/api/invoices').then(function (data) {
       var list = data.invoices || [];
-      $content.innerHTML = '<div class="table-card"><div class="table-header"><h3>Invoices (' + list.length + ')</h3>' +
-        '<button type="button" class="btn btn-primary btn-sm" onclick="window.goTo(\'new-invoice\')">+ New Invoice</button></div>' +
+      $content.innerHTML = '<div class="table-card"><div class="table-header"><h3>Invoices (' + list.length + ')</h3></div>' +
         (list.length ? invoiceTableHTML(list) : '<div class="empty-state">No invoices found.</div>') + '</div>';
     });
   }
