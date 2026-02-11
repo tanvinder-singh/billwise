@@ -1,6 +1,6 @@
 #!/bin/bash
 # ─────────────────────────────────────────────────────────
-# BillWise — One-Time EC2 Infrastructure & Database Setup
+# Rupiya — One-Time EC2 Infrastructure & Database Setup
 # Run from your local machine:  chmod +x setup.sh && ./setup.sh
 #
 # What this does (idempotent — safe to re-run):
@@ -18,12 +18,12 @@ set -e
 EC2_IP="100.30.61.32"
 PEM_FILE="$HOME/Downloads/billwise.pem"
 EC2_USER="ubuntu"
-APP_DIR="/home/ubuntu/billwise"
+APP_DIR="/home/ubuntu/rupiya"
 GITHUB_REPO="https://github.com/tanvinder-singh/billwise.git"
 BRANCH="main"
-DB_NAME="billwise_db"
-DB_USER="billwise"
-DB_PASS="billwise_strong_$(openssl rand -hex 4)"
+DB_NAME="rupiya_db"
+DB_USER="rupiya"
+DB_PASS="rupiya_strong_$(openssl rand -hex 4)"
 # ─────────────────────────────────────────────────────────
 
 RED='\033[0;31m'
@@ -34,7 +34,7 @@ NC='\033[0m'
 
 echo ""
 echo -e "${CYAN}══════════════════════════════════════════${NC}"
-echo -e "${CYAN}   BillWise — EC2 Infrastructure Setup${NC}"
+echo -e "${CYAN}   Rupiya — EC2 Infrastructure Setup${NC}"
 echo -e "${CYAN}══════════════════════════════════════════${NC}"
 echo ""
 
@@ -216,10 +216,10 @@ ssh -i "$PEM_FILE" -o StrictHostKeyChecking=no "$EC2_USER@$EC2_IP" << REMOTE_PM2
   cd $APP_DIR
 
   # Stop existing if any
-  pm2 delete billwise 2>/dev/null || true
+  pm2 delete rupiya 2>/dev/null || true
 
   # Start fresh
-  pm2 start server.js --name billwise
+  pm2 start server.js --name rupiya
   pm2 save
 
   # Enable PM2 startup on reboot
@@ -238,7 +238,7 @@ echo -e "${YELLOW}[6/7] Configuring Nginx reverse proxy...${NC}"
 
 ssh -i "$PEM_FILE" -o StrictHostKeyChecking=no "$EC2_USER@$EC2_IP" << 'REMOTE_NGINX'
   set -e
-  sudo tee /etc/nginx/sites-available/billwise > /dev/null << 'NGINXCONF'
+  sudo tee /etc/nginx/sites-available/rupiya > /dev/null << 'NGINXCONF'
 server {
     listen 80;
     server_name _;
@@ -258,7 +258,7 @@ server {
 }
 NGINXCONF
 
-  sudo ln -sf /etc/nginx/sites-available/billwise /etc/nginx/sites-enabled/billwise
+  sudo ln -sf /etc/nginx/sites-available/rupiya /etc/nginx/sites-enabled/rupiya
   sudo rm -f /etc/nginx/sites-enabled/default
 
   sudo nginx -t
@@ -280,7 +280,7 @@ if [ "$HTTP_CODE" = "200" ]; then
   echo -e "  ${GREEN}App is live at http://$EC2_IP (HTTP $HTTP_CODE)${NC}"
 else
   echo -e "  ${RED}Warning: Got HTTP $HTTP_CODE — checking PM2 logs...${NC}"
-  ssh -i "$PEM_FILE" -o StrictHostKeyChecking=no "$EC2_USER@$EC2_IP" "pm2 logs billwise --lines 15 --nostream" 2>/dev/null || true
+  ssh -i "$PEM_FILE" -o StrictHostKeyChecking=no "$EC2_USER@$EC2_IP" "pm2 logs rupiya --lines 15 --nostream" 2>/dev/null || true
 fi
 
 echo ""
@@ -290,7 +290,7 @@ echo -e "${CYAN}═════════════════════�
 echo ""
 echo -e "  App URL:       ${GREEN}http://$EC2_IP${NC}"
 echo -e "  SSH:           ssh -i $PEM_FILE $EC2_USER@$EC2_IP"
-echo -e "  App logs:      ssh -i $PEM_FILE $EC2_USER@$EC2_IP 'pm2 logs billwise'"
+echo -e "  App logs:      ssh -i $PEM_FILE $EC2_USER@$EC2_IP 'pm2 logs rupiya'"
 echo -e "  DB password:   $DB_PASS"
 echo ""
 echo -e "  ${YELLOW}IMPORTANT: Save the DB password above! It's in the .env on the server.${NC}"

@@ -123,7 +123,7 @@
     apiPost('/api/auth/register', { name: name, email: email, phone: mobile, password: password })
       .then(function (data) {
         if (data.error) { signupError.textContent = data.error; return; }
-        localStorage.setItem('billwise_token', data.token);
+        localStorage.setItem('rupiya_token', data.token);
         closeAllModals();
         showToast('Account created! Redirecting...', 'success');
         setTimeout(function () { window.location.href = '/dashboard'; }, 800);
@@ -144,7 +144,7 @@
     apiPost('/api/auth/login', { identifier: identifier, password: password })
       .then(function (data) {
         if (data.error) { loginError.textContent = data.error; return; }
-        localStorage.setItem('billwise_token', data.token);
+        localStorage.setItem('rupiya_token', data.token);
         closeAllModals();
         showToast('Welcome back! Redirecting...', 'success');
         setTimeout(function () { window.location.href = '/dashboard'; }, 800);
@@ -195,7 +195,7 @@
     apiPost('/api/auth/verify-otp', { target: phone, type: 'phone', otp: otp })
       .then(function (data) {
         if (data.error) { phoneLoginError.textContent = data.error; return; }
-        localStorage.setItem('billwise_token', data.token);
+        localStorage.setItem('rupiya_token', data.token);
         closeAllModals();
         showToast('Phone verified! Redirecting...', 'success');
         setTimeout(function () { window.location.href = '/dashboard'; }, 800);
@@ -205,14 +205,14 @@
 
   // ─── Logout ────────────────────────────────────────────────
   logoutBtn.addEventListener('click', function () {
-    localStorage.removeItem('billwise_token');
+    localStorage.removeItem('rupiya_token');
     updateAuthUI();
     showToast('Logged out', 'success');
   });
 
   // ─── Auth UI State ─────────────────────────────────────────
   function updateAuthUI() {
-    var token = localStorage.getItem('billwise_token');
+    var token = localStorage.getItem('rupiya_token');
     if (token) {
       fetch('/api/auth/me', { headers: { 'Authorization': 'Bearer ' + token } })
         .then(function (r) { return r.json(); })
@@ -224,7 +224,7 @@
             userNameEl.textContent = data.user.business_name || data.user.name;
             userAvatar.textContent = (data.user.name || 'U').charAt(0).toUpperCase();
           } else {
-            localStorage.removeItem('billwise_token');
+            localStorage.removeItem('rupiya_token');
             showLoggedOut();
           }
         })

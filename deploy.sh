@@ -1,6 +1,6 @@
 #!/bin/bash
 # ─────────────────────────────────────────────────────────
-# BillWise — Code Deployment Script
+# Rupiya — Code Deployment Script
 # Run from your local machine:  chmod +x deploy.sh && ./deploy.sh
 #
 # Prerequisites: Run setup.sh first on a fresh EC2 instance.
@@ -23,7 +23,7 @@ NC='\033[0m'
 
 echo ""
 echo -e "${GREEN}══════════════════════════════════════${NC}"
-echo -e "${GREEN}   BillWise — Deploy Code${NC}"
+echo -e "${GREEN}   Rupiya — Deploy Code${NC}"
 echo -e "${GREEN}══════════════════════════════════════${NC}"
 echo ""
 

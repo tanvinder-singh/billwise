@@ -13,7 +13,7 @@ if (!email) {
 }
 
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL || 'postgresql://billwise:billwise@localhost:5432/billwise_db'
+  connectionString: process.env.DATABASE_URL || 'postgresql://rupiya:rupiya@localhost:5432/rupiya_db'
 });
 
 (async () => {

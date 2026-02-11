@@ -1,4 +1,4 @@
-# BillWise – GST Billing Software for Small Business (India)
+# Rupiya – GST Billing Software for Small Business (India)
 
 A full-stack GST billing application for Indian small businesses. Create invoices, manage customers, track payments, and stay GST compliant.
 

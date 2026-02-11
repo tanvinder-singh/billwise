@@ -2,7 +2,7 @@
   'use strict';
 
   // ─── State ─────────────────────────────────────────────────
-  var token = localStorage.getItem('billwise_token');
+  var token = localStorage.getItem('rupiya_token');
   var currentUser = null;
   var currentPage = 'overview';
 
@@ -254,7 +254,7 @@
     }).catch(function () { logout(); });
   }
   function logout() {
-    localStorage.removeItem('billwise_token');
+    localStorage.removeItem('rupiya_token');
     window.location.href = '/';
   }
   document.getElementById('logoutBtn').addEventListener('click', function (e) { e.preventDefault(); logout(); });
@@ -1312,7 +1312,7 @@
       // Business header
       html += '<div class="inv-biz-header' + (u.logo ? ' has-logo' : '') + '">';
       html += '<div class="biz-info">';
-      html += '<h3 class="biz-name">' + esc(u.business_name || u.name || 'BillWise') + '</h3>';
+      html += '<h3 class="biz-name">' + esc(u.business_name || u.name || 'Rupiya') + '</h3>';
       var addrParts = [u.address, u.city, u.state, u.pincode].filter(Boolean);
       if (addrParts.length) html += '<p>' + addrParts.join(', ') + '</p>';
       var contactParts = [];
@@ -1490,7 +1490,7 @@
       html += '</td>';
       // Signatory cell
       html += '<td class="sig-cell">';
-      html += '<p><strong>For ' + esc(u.business_name || u.name || 'BillWise') + ':</strong></p>';
+      html += '<p><strong>For ' + esc(u.business_name || u.name || 'Rupiya') + ':</strong></p>';
       if (u.signature) {
         html += '<img src="' + u.signature + '" alt="Signature" class="sig-img">';
       } else {
@@ -1542,7 +1542,7 @@
   function renderNewInvoice() {
     $pageTitle.textContent = 'New Invoice';
     var today = new Date().toISOString().slice(0, 10);
-    var bizName = currentUser ? (currentUser.business_name || currentUser.name || 'BillWise') : 'BillWise';
+    var bizName = currentUser ? (currentUser.business_name || currentUser.name || 'Rupiya') : 'Rupiya';
 
     var html = '<form id="invoiceForm" novalidate>';
 

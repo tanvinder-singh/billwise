@@ -8,7 +8,7 @@ const { initDB, users, invoices, otps, parties, products } = require('./database
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const JWT_SECRET = process.env.JWT_SECRET || 'billwise-dev-secret-2024';
+const JWT_SECRET = process.env.JWT_SECRET || 'rupiya-dev-secret-2024';
 const IS_DEV = !process.env.SMTP_HOST;
 
 app.use(express.json({ limit: '5mb' }));
@@ -117,9 +117,9 @@ app.post('/api/auth/register', async (req, res) => {
       try {
         const t = await getTransporter();
         await t.sendMail({
-          from: process.env.SMTP_FROM || 'noreply@billwise.in', to: email,
-          subject: 'BillWise - Verify your email',
-          html: `<h2>Welcome to BillWise!</h2><p>Your OTP: <strong>${otp}</strong></p><p>Valid for 10 minutes.</p>`
+          from: process.env.SMTP_FROM || 'noreply@rupiya.in', to: email,
+          subject: 'Rupiya - Verify your email',
+          html: `<h2>Welcome to Rupiya!</h2><p>Your OTP: <strong>${otp}</strong></p><p>Valid for 10 minutes.</p>`
         });
       } catch (e) { console.error('Email send failed:', e.message); }
     }
@@ -168,8 +168,8 @@ app.post('/api/auth/send-otp', async (req, res) => {
       try {
         const t = await getTransporter();
         await t.sendMail({
-          from: process.env.SMTP_FROM || 'noreply@billwise.in', to: target,
-          subject: 'BillWise - Your OTP',
+          from: process.env.SMTP_FROM || 'noreply@rupiya.in', to: target,
+          subject: 'Rupiya - Your OTP',
           html: `<p>Your OTP: <strong>${otp}</strong></p><p>Valid for 10 minutes.</p>`
         });
       } catch (e) { console.error('Email send failed:', e.message); }
@@ -178,7 +178,7 @@ app.post('/api/auth/send-otp', async (req, res) => {
     if (type === 'phone' && process.env.TWILIO_SID) {
       try {
         const twilio = require('twilio')(process.env.TWILIO_SID, process.env.TWILIO_AUTH_TOKEN);
-        await twilio.messages.create({ body: `Your BillWise OTP: ${otp}`, from: process.env.TWILIO_PHONE, to: `+91${target}` });
+        await twilio.messages.create({ body: `Your Rupiya OTP: ${otp}`, from: process.env.TWILIO_PHONE, to: `+91${target}` });
       } catch (e) { console.error('SMS send failed:', e.message); }
     }
 
@@ -856,7 +856,7 @@ app.get('/', (req, res) => {
 // ─── Start ───────────────────────────────────────────────────
 initDB().then(() => {
   app.listen(PORT, () => {
-    console.log(`\n  BillWise server running at http://localhost:${PORT}`);
+    console.log(`\n  Rupiya server running at http://localhost:${PORT}`);
     console.log(`  Dashboard: http://localhost:${PORT}/dashboard`);
     if (IS_DEV) console.log(`  [DEV MODE] OTPs will be logged here & returned in API responses\n`);
   });
