@@ -41,13 +41,12 @@ function generateOTP() {
 }
 
 function signToken(user) {
-  return jwt.sign({ id: user.id || user._id, email: user.email, name: user.name }, JWT_SECRET, { expiresIn: '7d' });
+  return jwt.sign({ id: user.id, email: user.email, name: user.name }, JWT_SECRET, { expiresIn: '7d' });
 }
 
 function safeUser(u) {
   if (!u) return null;
   const copy = { ...u };
-  if (!copy.id && copy._id) copy.id = copy._id;
   delete copy.password_hash;
   delete copy._id;
   return copy;

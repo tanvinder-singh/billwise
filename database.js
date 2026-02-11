@@ -97,6 +97,7 @@ async function initDB() {
         updated_at TIMESTAMP DEFAULT NOW()
       );
       CREATE INDEX IF NOT EXISTS idx_parties_user ON parties(user_id);
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_parties_user_name ON parties(user_id, name);
 
       CREATE TABLE IF NOT EXISTS products (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -111,6 +112,7 @@ async function initDB() {
         updated_at TIMESTAMP DEFAULT NOW()
       );
       CREATE INDEX IF NOT EXISTS idx_products_user ON products(user_id);
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_products_user_name ON products(user_id, name);
     `);
     console.log('  [DB] PostgreSQL tables initialized');
   } finally {
