@@ -85,7 +85,9 @@
   }
   function formatDateSlash(d) {
     if (!d) return '-';
-    var parts = d.split('-');
+    // Handle ISO timestamps like "2026-02-11T00:00:00.000Z"
+    var clean = String(d).split('T')[0];
+    var parts = clean.split('-');
     if (parts.length === 3) return parts[2] + '/' + parts[1] + '/' + parts[0];
     return d;
   }
@@ -1409,6 +1411,9 @@
       // Totals section
       html += '<div class="inv-totals-section"><table>' +
         '<tr><td>Sub Total</td><td>:</td><td class="text-right">' + formatINR(totalInclAmount) + '</td></tr>';
+      if (inv.discount && inv.discount > 0) {
+        html += '<tr><td>Discount</td><td>:</td><td class="text-right">-' + formatINR(inv.discount) + '</td></tr>';
+      }
       if (roundOff !== 0) {
         var roSign = roundOff >= 0 ? '+' : '-';
         html += '<tr><td>Round Off</td><td>:</td><td class="text-right">' + roSign + '\u20B9' + Math.abs(roundOff).toFixed(2) + '</td></tr>';
