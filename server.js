@@ -11,7 +11,7 @@ const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'billwise-dev-secret-2024';
 const IS_DEV = !process.env.SMTP_HOST;
 
-app.use(express.json());
+app.use(express.json({ limit: '5mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ─── Email Transporter ──────────────────────────────────────

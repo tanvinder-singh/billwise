@@ -797,14 +797,80 @@ tr:hover td { background:rgba(241,245,249,0.5); }
 .theme-bold .bank-sig-table td { border-color:#374151; }
 
 /* ============================================
-   Print styles
+   Print styles — force single A4 page
    ============================================ */
+@page { size:A4; margin:5mm 6mm; }
+
 @media print {
-  body { background:#fff !important; }
+  html, body { margin:0 !important; padding:0 !important; background:#fff !important; }
   .sidebar, .topbar, .toast, .overlay, .no-print, .theme-selector { display:none !important; }
-  .main { margin-left:0 !important; }
-  .content { padding:0 !important; }
-  .invoice-print { border:none; box-shadow:none; max-width:none; border-radius:0; }
+  .main { margin-left:0 !important; padding:0 !important; }
+  .content { padding:0 !important; margin:0 !important; }
+
+  /* Force single page */
+  .invoice-print {
+    border:none; box-shadow:none; max-width:none; border-radius:0;
+    page-break-after:avoid; page-break-inside:avoid;
+  }
+
+  /* Compact title bar */
+  .invoice-print .inv-title-bar { padding:6px 12px; }
+  .invoice-print .inv-title-bar h2 { font-size:0.95rem; }
+
+  /* Compact business header */
+  .invoice-print .inv-biz-header { padding:6px 12px 4px; }
+  .invoice-print .inv-biz-header .biz-name { font-size:1rem; margin:0 0 1px; }
+  .invoice-print .inv-biz-header p { font-size:0.7rem; margin:1px 0; }
+
+  /* Compact info row (Bill To / Invoice Details) */
+  .invoice-print .inv-info-row { padding:6px 12px; gap:10px; }
+  .invoice-print .inv-info-row p { font-size:0.72rem; margin:1px 0; }
+  .inv-info-label { font-size:0.62rem; margin-bottom:2px; }
+
+  /* Compact items table */
+  .inv-items-table th { padding:3px 4px; font-size:0.58rem; }
+  .inv-items-table td { padding:2px 4px; font-size:0.68rem; }
+  .inv-items-table td small { font-size:0.55rem; }
+  .inv-items-table tfoot td { padding:3px 4px; font-size:0.68rem; }
+
+  /* Compact tax summary */
+  .inv-tax-summary { padding:4px 12px; }
+  .inv-tax-summary .inv-info-label { margin-bottom:2px; }
+  .inv-tax-summary table { font-size:0.65rem; }
+  .inv-tax-summary th { padding:2px 4px; font-size:0.58rem; }
+  .inv-tax-summary td { padding:2px 4px; font-size:0.65rem; }
+
+  /* Compact totals */
+  .inv-totals-section { padding:2px 12px 4px; }
+  .inv-totals-section table { min-width:200px; }
+  .inv-totals-section td { padding:1px 6px; font-size:0.75rem; }
+  .inv-totals-section .total-row td { font-size:0.85rem; padding-top:3px; }
+
+  /* Compact amount in words */
+  .inv-words { margin:2px 12px 4px; padding:4px 8px; font-size:0.7rem; }
+
+  /* Compact payment section */
+  .inv-payment-section { padding:0 12px 4px; }
+  .inv-payment-section table { min-width:200px; }
+  .inv-payment-section td { padding:1px 6px; font-size:0.75rem; }
+
+  /* Compact terms & notes */
+  .invoice-print div[style*="padding:12px 30px"] { padding:3px 12px !important; }
+  .invoice-print div[style*="padding:0 30px 12px"] { padding:0 12px 3px !important; }
+
+  /* Compact bank + signature */
+  .inv-bank-sig { padding:0 12px 6px; }
+  .bank-sig-table td { padding:6px 8px; }
+  .bank-cell .bank-content { gap:6px; }
+  .bank-cell p { font-size:0.7rem; margin:1px 0; }
+  .bank-cell .inv-info-label { margin-bottom:3px; }
+  .bank-qr img { max-width:70px !important; max-height:70px !important; }
+  .upi-badge { font-size:0.5rem; padding:1px 4px; }
+  .sig-cell p { font-size:0.7rem; margin:1px 0; }
+  .sig-img { max-height:40px; }
+  .sig-space { height:30px; }
+
+  /* Color preservation for all themes */
   .invoice-print .inv-title-bar {
     -webkit-print-color-adjust:exact; print-color-adjust:exact; color-adjust:exact;
   }
@@ -821,10 +887,13 @@ tr:hover td { background:rgba(241,245,249,0.5); }
   .theme-bold .inv-items-table th, .theme-bold .inv-tax-summary th {
     -webkit-print-color-adjust:exact; print-color-adjust:exact; color-adjust:exact;
   }
-  .bank-sig-table { border:1.5px solid #666; }
-  .bank-sig-table td { border:1.5px solid #666; }
-  .invoice-print table { page-break-inside:auto; }
+  .bank-sig-table { border:1px solid #666; }
+  .bank-sig-table td { border:1px solid #666; }
+
+  /* Prevent page breaks inside invoice */
+  .invoice-print table { page-break-inside:avoid; }
   .invoice-print tr { page-break-inside:avoid; }
+  .invoice-print > * { page-break-inside:avoid; }
 }
 
 /* ============================================

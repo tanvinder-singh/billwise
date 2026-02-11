@@ -2081,12 +2081,18 @@
         invoice_theme: (document.querySelector('input[name="invoiceTheme"]:checked') || {}).value || 'classic',
         gstin_api_key: document.getElementById('sGstApiKey').value.trim()
       };
+      var submitBtn = e.target.querySelector('button[type="submit"]');
+      if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Saving...'; }
       api('PUT', '/api/auth/profile', body).then(function (data) {
+        if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Save Settings'; }
         if (data.error) { showToast(data.error, 'error'); return; }
         currentUser = data.user;
         $topAvatar.textContent = (currentUser.name || 'U').charAt(0).toUpperCase();
         $topName.textContent = currentUser.business_name || currentUser.name;
         showToast('Settings saved!', 'success');
+      }).catch(function (err) {
+        if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Save Settings'; }
+        showToast('Failed to save settings. Please try again.', 'error');
       });
     });
   }
