@@ -12,7 +12,15 @@ const JWT_SECRET = process.env.JWT_SECRET || 'billwise-dev-secret-2024';
 const IS_DEV = !process.env.SMTP_HOST;
 
 app.use(express.json({ limit: '5mb' }));
-app.use(express.static(path.join(__dirname, 'public')));
+
+// Static files — cache JS/CSS (versioned via ?v=) but never cache HTML
+app.use(express.static(path.join(__dirname, 'public'), {
+  setHeaders: function (res, filePath) {
+    if (filePath.endsWith('.html')) {
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    }
+  }
+}));
 
 // ─── Email Transporter ──────────────────────────────────────
 let transporter = null;
@@ -751,8 +759,14 @@ app.delete('/api/admin/users/:id', auth, adminAuth, async (req, res) => {
 });
 
 // ─── SPA fallback ────────────────────────────────────────────
-app.get('/dashboard', (req, res) => res.sendFile(path.join(__dirname, 'public', 'dashboard.html')));
-app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
+app.get('/dashboard', (req, res) => {
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.sendFile(path.join(__dirname, 'public', 'dashboard.html'));
+});
+app.get('/', (req, res) => {
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
 
 // ─── Start ───────────────────────────────────────────────────
 initDB().then(() => {
