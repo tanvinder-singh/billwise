@@ -1264,7 +1264,10 @@
       var grandTotal = inv.total || Math.round(totalInclAmount);
       var amountPaid = inv.amount_paid || 0;
       var balance = grandTotal - amountPaid;
-      var youSaved = totalMrpAmount > totalInclAmount ? totalMrpAmount - totalInclAmount : 0;
+      // You Saved = (MRP total - rate-based subtotal) + discount amount
+      var mrpSavings = totalMrpAmount > totalTaxable ? totalMrpAmount - totalTaxable : 0;
+      var discountSavings = inv.discount || 0;
+      var youSaved = mrpSavings + discountSavings;
       var isIntra = !inv.igst || inv.igst === 0;
       var taxSummary = computeTaxSummary(items, isIntra);
 
@@ -1571,6 +1574,7 @@
         '<tr id="rowIgst"><td>IGST</td><td id="sumIgst">\u20B90.00</td></tr>' +
         '<tr><td><label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="roundOffChk" checked> Round Off</label></td><td id="sumRoundOff">\u20B90.00</td></tr>' +
         '<tr class="total-row"><td>Total</td><td id="sumTotal">\u20B90.00</td></tr>' +
+        '<tr class="you-saved-row" id="rowYouSaved" style="display:none"><td style="color:#059669;font-weight:600">You Saved</td><td id="sumYouSaved" style="color:#059669;font-weight:600">\u20B90.00</td></tr>' +
       '</table></div></div>';
 
     // Actions
@@ -1704,7 +1708,7 @@
 
   function recalculate() {
     var rows = document.querySelectorAll('#itemsBody tr');
-    var subtotal = 0, totalDiscount = 0, totalCgst = 0, totalSgst = 0, totalIgst = 0;
+    var subtotal = 0, totalDiscount = 0, totalCgst = 0, totalSgst = 0, totalIgst = 0, totalMrpVal = 0;
     var pos = document.getElementById('posState').value;
     var businessState = currentUser ? currentUser.state : '';
     var isIntra = pos && businessState && pos === businessState;
@@ -1712,6 +1716,7 @@
     rows.forEach(function (tr) {
       var qty = parseFloat(tr.querySelector('[data-f="qty"]').value) || 0;
       var rate = parseFloat(tr.querySelector('[data-f="rate"]').value) || 0;
+      var mrp = parseFloat(tr.querySelector('[data-f="mrp"]').value) || 0;
       var gst = parseFloat(tr.querySelector('[data-f="gst"]').value) || 0;
       var discPct = parseFloat(tr.querySelector('[data-f="disc_pct"]').value) || 0;
       var lineTotal = qty * rate;
@@ -1721,6 +1726,7 @@
       var amount = afterDisc + gstAmt;
       subtotal += lineTotal;
       totalDiscount += discAmt;
+      totalMrpVal += mrp * qty;
       if (isIntra || !pos) { totalCgst += afterDisc * gst / 200; totalSgst += afterDisc * gst / 200; }
       else { totalIgst += afterDisc * gst / 100; }
       tr.querySelector('[data-f="disc_amt"]').textContent = formatINR(discAmt);
@@ -1750,6 +1756,22 @@
     document.getElementById('rowCgst').style.display = totalIgst > 0 ? 'none' : '';
     document.getElementById('rowSgst').style.display = totalIgst > 0 ? 'none' : '';
     document.getElementById('rowIgst').style.display = totalIgst > 0 ? '' : 'none';
+
+    // You Saved: MRP savings (MRP - Rate per item) + discount savings
+    var youSaved = 0;
+    // MRP savings: difference between total MRP and subtotal (rate-based total)
+    if (totalMrpVal > subtotal) youSaved += totalMrpVal - subtotal;
+    // Plus discount savings
+    youSaved += totalDiscount;
+    var savedRow = document.getElementById('rowYouSaved');
+    if (savedRow) {
+      if (youSaved > 0) {
+        savedRow.style.display = '';
+        document.getElementById('sumYouSaved').textContent = formatINR(youSaved);
+      } else {
+        savedRow.style.display = 'none';
+      }
+    }
   }
 
   function submitInvoice() {

@@ -654,7 +654,11 @@ tr:hover td { background:rgba(241,245,249,0.5); }
 .inv-payment-section { padding:0 30px 16px; }
 .inv-payment-section table { min-width:300px; margin-left:auto; }
 .inv-payment-section td { padding:4px 10px; font-size:0.9375rem; }
-.inv-payment-section .you-saved td { color:var(--success); }
+.inv-payment-section .you-saved td { color:var(--success); font-weight:600; }
+.inv-payment-section .you-saved { background:#ecfdf5; }
+
+/* You Saved row in create-invoice summary */
+.summary-table .you-saved-row td { border-top:1px dashed var(--success); padding-top:8px; }
 
 /* Footer row (T&C + Bank) */
 .inv-footer-row {
