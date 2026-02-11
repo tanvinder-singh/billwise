@@ -4,7 +4,7 @@ const path = require('path');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const nodemailer = require('nodemailer');
-const { users, invoices, otps, parties, products } = require('./database');
+const { initDB, users, invoices, otps, parties, products } = require('./database');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -41,13 +41,15 @@ function generateOTP() {
 }
 
 function signToken(user) {
-  return jwt.sign({ id: user._id, email: user.email, name: user.name }, JWT_SECRET, { expiresIn: '7d' });
+  return jwt.sign({ id: user.id || user._id, email: user.email, name: user.name }, JWT_SECRET, { expiresIn: '7d' });
 }
 
 function safeUser(u) {
   if (!u) return null;
-  const copy = { ...u, id: u._id };
+  const copy = { ...u };
+  if (!copy.id && copy._id) copy.id = copy._id;
   delete copy.password_hash;
+  delete copy._id;
   return copy;
 }
 
@@ -88,12 +90,12 @@ app.post('/api/auth/register', async (req, res) => {
       bank_name: '', account_no: '', ifsc_code: '', account_holder: '', terms_conditions: '',
       upi_id: '', upi_qr: '', signature: '',
       email_verified: false, phone_verified: false,
-      created_at: new Date().toISOString()
+      created_at: new Date()
     });
 
     // Send email OTP
     const otp = generateOTP();
-    await otps.insert({ target: emailLower, type: 'email', otp, expires_at: new Date(Date.now() + 10 * 60000).toISOString(), used: false });
+    await otps.insert({ target: emailLower, type: 'email', otp, expires_at: new Date(Date.now() + 10 * 60000), used: false });
     console.log(`[DEV] Email OTP for ${emailLower}: ${otp}`);
 
     if (!IS_DEV) {
@@ -111,7 +113,7 @@ app.post('/api/auth/register', async (req, res) => {
     res.json({ token, user: safeUser(user), otp: IS_DEV ? otp : undefined, message: 'Account created!' });
   } catch (e) {
     console.error(e);
-    if (e.errorType === 'uniqueViolated') return res.status(409).json({ error: 'Account already exists with this email or phone' });
+    if (e.code === '23505' || e.errorType === 'uniqueViolated') return res.status(409).json({ error: 'Account already exists with this email or phone' });
     res.status(500).json({ error: 'Registration failed' });
   }
 });
@@ -144,7 +146,7 @@ app.post('/api/auth/send-otp', async (req, res) => {
     if (!target || !type) return res.status(400).json({ error: 'Target and type are required' });
 
     const otp = generateOTP();
-    await otps.insert({ target, type, otp, expires_at: new Date(Date.now() + 10 * 60000).toISOString(), used: false });
+    await otps.insert({ target, type, otp, expires_at: new Date(Date.now() + 10 * 60000), used: false });
     console.log(`[DEV] ${type.toUpperCase()} OTP for ${target}: ${otp}`);
 
     if (type === 'email' && !IS_DEV) {
@@ -180,11 +182,11 @@ app.post('/api/auth/verify-otp', async (req, res) => {
 
     const record = await otps.findOne({
       target, type, otp, used: false,
-      expires_at: { $gt: new Date().toISOString() }
+      expires_at: { $gt: new Date() }
     });
     if (!record) return res.status(400).json({ error: 'Invalid or expired OTP' });
 
-    await otps.update({ _id: record._id }, { $set: { used: true } });
+    await otps.update({ id: record.id }, { $set: { used: true } });
 
     if (type === 'phone') {
       let user = await users.findOne({ phone: target });
@@ -196,10 +198,10 @@ app.post('/api/auth/verify-otp', async (req, res) => {
           bank_name: '', account_no: '', ifsc_code: '', account_holder: '', terms_conditions: '',
           upi_id: '', upi_qr: '', signature: '',
           email_verified: false, phone_verified: true,
-          created_at: new Date().toISOString()
+          created_at: new Date()
         });
       } else {
-        await users.update({ _id: user._id }, { $set: { phone_verified: true } });
+        await users.update({ id: user.id }, { $set: { phone_verified: true } });
       }
       const token = signToken(user);
       return res.json({ token, user: safeUser(user), message: 'Phone verified!' });
@@ -219,22 +221,27 @@ app.post('/api/auth/verify-otp', async (req, res) => {
 
 // Current user
 app.get('/api/auth/me', auth, async (req, res) => {
-  const user = await users.findOne({ _id: req.user.id });
+  const user = await users.findOne({ id: req.user.id });
   if (!user) return res.status(404).json({ error: 'User not found' });
   res.json({ user: safeUser(user) });
 });
 
 // Update profile
 app.put('/api/auth/profile', auth, async (req, res) => {
-  const { name, business_name, gstin, address, city, state, pincode, bank_name, account_no, ifsc_code, account_holder, terms_conditions, upi_id, upi_qr, signature } = req.body;
-  await users.update({ _id: req.user.id }, {
-    $set: { name: name || '', business_name: business_name || '', gstin: gstin || '',
-      address: address || '', city: city || '', state: state || '', pincode: pincode || '',
-      bank_name: bank_name || '', account_no: account_no || '', ifsc_code: ifsc_code || '',
-      account_holder: account_holder || '', terms_conditions: terms_conditions || '',
-      upi_id: upi_id || '', upi_qr: upi_qr || '', signature: signature || '' }
-  });
-  const user = await users.findOne({ _id: req.user.id });
+  const { name, business_name, gstin, address, city, state, pincode, bank_name, account_no,
+          ifsc_code, account_holder, terms_conditions, upi_id, upi_qr, signature,
+          invoice_theme, gstin_api_key } = req.body;
+  const setData = {
+    name: name || '', business_name: business_name || '', gstin: gstin || '',
+    address: address || '', city: city || '', state: state || '', pincode: pincode || '',
+    bank_name: bank_name || '', account_no: account_no || '', ifsc_code: ifsc_code || '',
+    account_holder: account_holder || '', terms_conditions: terms_conditions || '',
+    upi_id: upi_id || '', upi_qr: upi_qr || '', signature: signature || ''
+  };
+  if (invoice_theme !== undefined) setData.invoice_theme = invoice_theme;
+  if (gstin_api_key !== undefined) setData.gstin_api_key = gstin_api_key;
+  await users.update({ id: req.user.id }, { $set: setData });
+  const user = await users.findOne({ id: req.user.id });
   res.json({ user: safeUser(user), message: 'Profile updated' });
 });
 
@@ -244,13 +251,18 @@ app.put('/api/auth/profile', auth, async (req, res) => {
 app.get('/api/parties', auth, async (req, res) => {
   try {
     const q = (req.query.q || '').trim();
-    let list = await parties.find({ user_id: req.user.id });
+    const { pool } = require('./database');
+    let sql, params;
     if (q) {
-      const regex = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
-      list = list.filter(p => regex.test(p.name));
+      sql = `SELECT * FROM parties WHERE user_id = $1 AND name ILIKE $2 ORDER BY updated_at DESC LIMIT 20`;
+      params = [req.user.id, '%' + q + '%'];
+    } else {
+      sql = `SELECT * FROM parties WHERE user_id = $1 ORDER BY updated_at DESC LIMIT 20`;
+      params = [req.user.id];
     }
-    list.sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || ''));
-    res.json({ parties: list.slice(0, 20) });
+    const result = await pool.query(sql, params);
+    const list = result.rows.map(r => { r._id = r.id; return r; });
+    res.json({ parties: list });
   } catch (e) {
     console.error(e);
     res.json({ parties: [] });
@@ -261,13 +273,22 @@ app.get('/api/parties', auth, async (req, res) => {
 app.get('/api/products', auth, async (req, res) => {
   try {
     const q = (req.query.q || '').trim();
-    let list = await products.find({ user_id: req.user.id });
+    const { pool } = require('./database');
+    let sql, params;
     if (q) {
-      const regex = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
-      list = list.filter(p => regex.test(p.name));
+      sql = `SELECT * FROM products WHERE user_id = $1 AND name ILIKE $2 ORDER BY updated_at DESC LIMIT 20`;
+      params = [req.user.id, '%' + q + '%'];
+    } else {
+      sql = `SELECT * FROM products WHERE user_id = $1 ORDER BY updated_at DESC LIMIT 20`;
+      params = [req.user.id];
     }
-    list.sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || ''));
-    res.json({ products: list.slice(0, 20) });
+    const result = await pool.query(sql, params);
+    const list = result.rows.map(r => {
+      r._id = r.id;
+      ['mrp','rate','gst'].forEach(k => { if (r[k] !== undefined) r[k] = parseFloat(r[k]); });
+      return r;
+    });
+    res.json({ products: list });
   } catch (e) {
     console.error(e);
     res.json({ products: [] });
@@ -318,7 +339,7 @@ app.get('/api/gstin-lookup/:gstin', auth, async (req, res) => {
   const stateWithCode = stateName ? (stateCode + '-' + stateName) : '';
 
   // Check if user has a GSTIN API key configured (fallback to default)
-  const user = await users.findOne({ _id: req.user.id });
+  const user = await users.findOne({ id: req.user.id });
   const apiKey = (user && user.gstin_api_key ? user.gstin_api_key.trim() : '') || '73bab7f23f2742306a1dccbd2d8874ec';
 
   if (apiKey) {
@@ -370,7 +391,7 @@ app.post('/api/parties', auth, async (req, res) => {
       shipping_address: shipping_address || '',
       opening_balance: opening_balance || 0, credit_limit: credit_limit || 0,
       payment_terms: payment_terms || '', notes: notes || '',
-      updated_at: new Date().toISOString()
+      updated_at: new Date()
     });
     res.json({ party, message: 'Party added!' });
   } catch (e) {
@@ -389,7 +410,7 @@ app.post('/api/products', auth, async (req, res) => {
     const product = await products.insert({
       user_id: req.user.id, name, hsn: hsn || '', size: size || '', mrp: mrp || 0,
       rate: rate || 0, gst: gst != null ? gst : 0, unit: unit || 'Pcs',
-      updated_at: new Date().toISOString()
+      updated_at: new Date()
     });
     res.json({ product, message: 'Item added!' });
   } catch (e) {
@@ -402,12 +423,12 @@ app.post('/api/products', auth, async (req, res) => {
 app.put('/api/parties/:id', auth, async (req, res) => {
   try {
     const { name, phone, email, address, gstin, state } = req.body;
-    await parties.update({ _id: req.params.id, user_id: req.user.id }, {
+    await parties.update({ id: req.params.id, user_id: req.user.id }, {
       $set: { name: name || '', phone: phone || '', email: email || '',
         address: address || '', gstin: gstin || '', state: state || '',
-        updated_at: new Date().toISOString() }
+        updated_at: new Date() }
     });
-    const party = await parties.findOne({ _id: req.params.id });
+    const party = await parties.findOne({ id: req.params.id });
     res.json({ party, message: 'Party updated' });
   } catch (e) {
     console.error(e);
@@ -417,7 +438,7 @@ app.put('/api/parties/:id', auth, async (req, res) => {
 
 // Delete a party
 app.delete('/api/parties/:id', auth, async (req, res) => {
-  const removed = await parties.remove({ _id: req.params.id, user_id: req.user.id });
+  const removed = await parties.remove({ id: req.params.id, user_id: req.user.id });
   if (removed === 0) return res.status(404).json({ error: 'Party not found' });
   res.json({ message: 'Party deleted' });
 });
@@ -426,12 +447,12 @@ app.delete('/api/parties/:id', auth, async (req, res) => {
 app.put('/api/products/:id', auth, async (req, res) => {
   try {
     const { name, hsn, size, mrp, rate, gst, unit } = req.body;
-    await products.update({ _id: req.params.id, user_id: req.user.id }, {
+    await products.update({ id: req.params.id, user_id: req.user.id }, {
       $set: { name: name || '', hsn: hsn || '', size: size || '', mrp: mrp || 0,
         rate: rate || 0, gst: gst != null ? gst : 0, unit: unit || 'Pcs',
-        updated_at: new Date().toISOString() }
+        updated_at: new Date() }
     });
-    const product = await products.findOne({ _id: req.params.id });
+    const product = await products.findOne({ id: req.params.id });
     res.json({ product, message: 'Product updated' });
   } catch (e) {
     console.error(e);
@@ -441,7 +462,7 @@ app.put('/api/products/:id', auth, async (req, res) => {
 
 // Delete a product
 app.delete('/api/products/:id', auth, async (req, res) => {
-  const removed = await products.remove({ _id: req.params.id, user_id: req.user.id });
+  const removed = await products.remove({ id: req.params.id, user_id: req.user.id });
   if (removed === 0) return res.status(404).json({ error: 'Product not found' });
   res.json({ message: 'Product deleted' });
 });
@@ -495,7 +516,7 @@ app.post('/api/invoices', auth, async (req, res) => {
       items, subtotal: subtotal || 0, cgst: cgst || 0, sgst: sgst || 0,
       igst: igst || 0, total: total || 0, round_off: round_off || 0, total_mrp: total_mrp || 0,
       amount_paid: 0, notes: notes || '', status: status || 'unpaid',
-      created_at: now.toISOString()
+      created_at: now
     });
 
     // Auto-save party and items for future autocomplete
@@ -504,10 +525,10 @@ app.post('/api/invoices', auth, async (req, res) => {
         user_id: req.user.id, name: customer_name,
         phone: customer_phone || '', email: customer_email || '',
         address: customer_address || '', gstin: customer_gstin || '',
-        state: customer_state || '', updated_at: now.toISOString()
+        state: customer_state || '', updated_at: now
       };
       const existingParty = await parties.findOne({ user_id: req.user.id, name: customer_name });
-      if (existingParty) await parties.update({ _id: existingParty._id }, { $set: partyData });
+      if (existingParty) await parties.update({ id: existingParty.id }, { $set: partyData });
       else await parties.insert(partyData);
 
       for (const item of items) {
@@ -515,17 +536,17 @@ app.post('/api/invoices', auth, async (req, res) => {
           user_id: req.user.id, name: item.name,
           hsn: item.hsn || '', size: item.size || '', mrp: item.mrp || 0,
           rate: item.rate || 0, gst: item.gst || 0, unit: item.unit || 'Pcs',
-          updated_at: now.toISOString()
+          updated_at: now
         };
         const existingProduct = await products.findOne({ user_id: req.user.id, name: item.name });
-        if (existingProduct) await products.update({ _id: existingProduct._id }, { $set: productData });
+        if (existingProduct) await products.update({ id: existingProduct.id }, { $set: productData });
         else await products.insert(productData);
       }
     } catch (autoErr) {
       console.error('Auto-save error (non-critical):', autoErr);
     }
 
-    res.json({ invoice: { ...inv, id: inv._id }, message: 'Invoice created!' });
+    res.json({ invoice: inv, message: 'Invoice created!' });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'Failed to create invoice' });
@@ -534,24 +555,24 @@ app.post('/api/invoices', auth, async (req, res) => {
 
 // Get one
 app.get('/api/invoices/:id', auth, async (req, res) => {
-  const inv = await invoices.findOne({ _id: req.params.id, user_id: req.user.id });
+  const inv = await invoices.findOne({ id: req.params.id, user_id: req.user.id });
   if (!inv) return res.status(404).json({ error: 'Invoice not found' });
-  res.json({ invoice: { ...inv, id: inv._id } });
+  res.json({ invoice: inv });
 });
 
 // Update status
 app.patch('/api/invoices/:id', auth, async (req, res) => {
   const { status, amount_paid } = req.body;
-  await invoices.update({ _id: req.params.id, user_id: req.user.id },
+  await invoices.update({ id: req.params.id, user_id: req.user.id },
     { $set: { status: status || 'unpaid', amount_paid: amount_paid || 0 } });
-  const inv = await invoices.findOne({ _id: req.params.id, user_id: req.user.id });
+  const inv = await invoices.findOne({ id: req.params.id, user_id: req.user.id });
   if (!inv) return res.status(404).json({ error: 'Invoice not found' });
-  res.json({ invoice: { ...inv, id: inv._id }, message: 'Invoice updated' });
+  res.json({ invoice: inv, message: 'Invoice updated' });
 });
 
 // Delete
 app.delete('/api/invoices/:id', auth, async (req, res) => {
-  const removed = await invoices.remove({ _id: req.params.id, user_id: req.user.id });
+  const removed = await invoices.remove({ id: req.params.id, user_id: req.user.id });
   if (removed === 0) return res.status(404).json({ error: 'Invoice not found' });
   res.json({ message: 'Invoice deleted' });
 });
@@ -611,8 +632,14 @@ app.get('/dashboard', (req, res) => res.sendFile(path.join(__dirname, 'public', 
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
 // ─── Start ───────────────────────────────────────────────────
-app.listen(PORT, () => {
-  console.log(`\n  BillWise server running at http://localhost:${PORT}`);
-  console.log(`  Dashboard: http://localhost:${PORT}/dashboard`);
-  if (IS_DEV) console.log(`  [DEV MODE] OTPs will be logged here & returned in API responses\n`);
+initDB().then(() => {
+  app.listen(PORT, () => {
+    console.log(`\n  BillWise server running at http://localhost:${PORT}`);
+    console.log(`  Dashboard: http://localhost:${PORT}/dashboard`);
+    if (IS_DEV) console.log(`  [DEV MODE] OTPs will be logged here & returned in API responses\n`);
+  });
+}).catch(err => {
+  console.error('Failed to initialize database:', err.message);
+  console.error('Make sure PostgreSQL is running and DATABASE_URL is configured in .env');
+  process.exit(1);
 });
