@@ -1,0 +1,618 @@
+require('dotenv').config();
+const express = require('express');
+const path = require('path');
+const jwt = require('jsonwebtoken');
+const bcrypt = require('bcryptjs');
+const nodemailer = require('nodemailer');
+const { users, invoices, otps, parties, products } = require('./database');
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+const JWT_SECRET = process.env.JWT_SECRET || 'billwise-dev-secret-2024';
+const IS_DEV = !process.env.SMTP_HOST;
+
+app.use(express.json());
+app.use(express.static(path.join(__dirname, 'public')));
+
+// ─── Email Transporter ──────────────────────────────────────
+let transporter = null;
+async function getTransporter() {
+  if (transporter) return transporter;
+  if (process.env.SMTP_HOST) {
+    transporter = nodemailer.createTransport({
+      host: process.env.SMTP_HOST,
+      port: Number(process.env.SMTP_PORT) || 587,
+      secure: false,
+      auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
+    });
+  } else {
+    const test = await nodemailer.createTestAccount();
+    transporter = nodemailer.createTransport({
+      host: 'smtp.ethereal.email', port: 587,
+      auth: { user: test.user, pass: test.pass }
+    });
+  }
+  return transporter;
+}
+
+// ─── Helpers ─────────────────────────────────────────────────
+function generateOTP() {
+  return Math.floor(100000 + Math.random() * 900000).toString();
+}
+
+function signToken(user) {
+  return jwt.sign({ id: user._id, email: user.email, name: user.name }, JWT_SECRET, { expiresIn: '7d' });
+}
+
+function safeUser(u) {
+  if (!u) return null;
+  const copy = { ...u, id: u._id };
+  delete copy.password_hash;
+  return copy;
+}
+
+// Auth middleware
+function auth(req, res, next) {
+  const header = req.headers.authorization;
+  if (!header) return res.status(401).json({ error: 'No token provided' });
+  try {
+    req.user = jwt.verify(header.replace('Bearer ', ''), JWT_SECRET);
+    next();
+  } catch (e) {
+    res.status(401).json({ error: 'Invalid or expired token' });
+  }
+}
+
+// ─── AUTH ROUTES ─────────────────────────────────────────────
+
+// Register
+app.post('/api/auth/register', async (req, res) => {
+  try {
+    const { name, email, phone, password } = req.body;
+    if (!name || !email || !password) return res.status(400).json({ error: 'Name, email and password are required' });
+
+    const emailLower = email.toLowerCase();
+    const existing = await users.findOne({ email: emailLower });
+    if (existing) return res.status(409).json({ error: 'An account with this email already exists' });
+
+    if (phone) {
+      const phoneExists = await users.findOne({ phone });
+      if (phoneExists) return res.status(409).json({ error: 'An account with this phone already exists' });
+    }
+
+    const hash = bcrypt.hashSync(password, 10);
+    const user = await users.insert({
+      name, email: emailLower, phone: phone || null,
+      password_hash: hash,
+      business_name: '', gstin: '', address: '', city: '', state: '', pincode: '',
+      bank_name: '', account_no: '', ifsc_code: '', account_holder: '', terms_conditions: '',
+      upi_id: '', upi_qr: '', signature: '',
+      email_verified: false, phone_verified: false,
+      created_at: new Date().toISOString()
+    });
+
+    // Send email OTP
+    const otp = generateOTP();
+    await otps.insert({ target: emailLower, type: 'email', otp, expires_at: new Date(Date.now() + 10 * 60000).toISOString(), used: false });
+    console.log(`[DEV] Email OTP for ${emailLower}: ${otp}`);
+
+    if (!IS_DEV) {
+      try {
+        const t = await getTransporter();
+        await t.sendMail({
+          from: process.env.SMTP_FROM || 'noreply@billwise.in', to: email,
+          subject: 'BillWise - Verify your email',
+          html: `<h2>Welcome to BillWise!</h2><p>Your OTP: <strong>${otp}</strong></p><p>Valid for 10 minutes.</p>`
+        });
+      } catch (e) { console.error('Email send failed:', e.message); }
+    }
+
+    const token = signToken(user);
+    res.json({ token, user: safeUser(user), otp: IS_DEV ? otp : undefined, message: 'Account created!' });
+  } catch (e) {
+    console.error(e);
+    if (e.errorType === 'uniqueViolated') return res.status(409).json({ error: 'Account already exists with this email or phone' });
+    res.status(500).json({ error: 'Registration failed' });
+  }
+});
+
+// Login
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    const { identifier, password } = req.body;
+    if (!identifier || !password) return res.status(400).json({ error: 'Email/phone and password are required' });
+
+    const idLower = identifier.toLowerCase();
+    const user = await users.findOne({ $or: [{ email: idLower }, { phone: identifier }] });
+    if (!user) return res.status(401).json({ error: 'No account found with this email/phone' });
+    if (!user.password_hash || !bcrypt.compareSync(password, user.password_hash)) {
+      return res.status(401).json({ error: 'Incorrect password' });
+    }
+
+    const token = signToken(user);
+    res.json({ token, user: safeUser(user) });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Login failed' });
+  }
+});
+
+// Send OTP
+app.post('/api/auth/send-otp', async (req, res) => {
+  try {
+    const { target, type } = req.body;
+    if (!target || !type) return res.status(400).json({ error: 'Target and type are required' });
+
+    const otp = generateOTP();
+    await otps.insert({ target, type, otp, expires_at: new Date(Date.now() + 10 * 60000).toISOString(), used: false });
+    console.log(`[DEV] ${type.toUpperCase()} OTP for ${target}: ${otp}`);
+
+    if (type === 'email' && !IS_DEV) {
+      try {
+        const t = await getTransporter();
+        await t.sendMail({
+          from: process.env.SMTP_FROM || 'noreply@billwise.in', to: target,
+          subject: 'BillWise - Your OTP',
+          html: `<p>Your OTP: <strong>${otp}</strong></p><p>Valid for 10 minutes.</p>`
+        });
+      } catch (e) { console.error('Email send failed:', e.message); }
+    }
+
+    if (type === 'phone' && process.env.TWILIO_SID) {
+      try {
+        const twilio = require('twilio')(process.env.TWILIO_SID, process.env.TWILIO_AUTH_TOKEN);
+        await twilio.messages.create({ body: `Your BillWise OTP: ${otp}`, from: process.env.TWILIO_PHONE, to: `+91${target}` });
+      } catch (e) { console.error('SMS send failed:', e.message); }
+    }
+
+    res.json({ message: `OTP sent to ${target}`, otp: IS_DEV ? otp : undefined });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Failed to send OTP' });
+  }
+});
+
+// Verify OTP
+app.post('/api/auth/verify-otp', async (req, res) => {
+  try {
+    const { target, type, otp } = req.body;
+    if (!target || !type || !otp) return res.status(400).json({ error: 'Target, type and OTP are required' });
+
+    const record = await otps.findOne({
+      target, type, otp, used: false,
+      expires_at: { $gt: new Date().toISOString() }
+    });
+    if (!record) return res.status(400).json({ error: 'Invalid or expired OTP' });
+
+    await otps.update({ _id: record._id }, { $set: { used: true } });
+
+    if (type === 'phone') {
+      let user = await users.findOne({ phone: target });
+      if (!user) {
+        user = await users.insert({
+          name: `User-${target.slice(-4)}`, email: null, phone: target,
+          password_hash: null, business_name: '', gstin: '', address: '',
+          city: '', state: '', pincode: '',
+          bank_name: '', account_no: '', ifsc_code: '', account_holder: '', terms_conditions: '',
+          upi_id: '', upi_qr: '', signature: '',
+          email_verified: false, phone_verified: true,
+          created_at: new Date().toISOString()
+        });
+      } else {
+        await users.update({ _id: user._id }, { $set: { phone_verified: true } });
+      }
+      const token = signToken(user);
+      return res.json({ token, user: safeUser(user), message: 'Phone verified!' });
+    }
+
+    if (type === 'email') {
+      await users.update({ email: target }, { $set: { email_verified: true } });
+      return res.json({ message: 'Email verified!' });
+    }
+
+    res.json({ message: 'OTP verified' });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Verification failed' });
+  }
+});
+
+// Current user
+app.get('/api/auth/me', auth, async (req, res) => {
+  const user = await users.findOne({ _id: req.user.id });
+  if (!user) return res.status(404).json({ error: 'User not found' });
+  res.json({ user: safeUser(user) });
+});
+
+// Update profile
+app.put('/api/auth/profile', auth, async (req, res) => {
+  const { name, business_name, gstin, address, city, state, pincode, bank_name, account_no, ifsc_code, account_holder, terms_conditions, upi_id, upi_qr, signature } = req.body;
+  await users.update({ _id: req.user.id }, {
+    $set: { name: name || '', business_name: business_name || '', gstin: gstin || '',
+      address: address || '', city: city || '', state: state || '', pincode: pincode || '',
+      bank_name: bank_name || '', account_no: account_no || '', ifsc_code: ifsc_code || '',
+      account_holder: account_holder || '', terms_conditions: terms_conditions || '',
+      upi_id: upi_id || '', upi_qr: upi_qr || '', signature: signature || '' }
+  });
+  const user = await users.findOne({ _id: req.user.id });
+  res.json({ user: safeUser(user), message: 'Profile updated' });
+});
+
+// ─── PARTY & PRODUCT AUTOCOMPLETE ────────────────────────────
+
+// Search saved parties (customers)
+app.get('/api/parties', auth, async (req, res) => {
+  try {
+    const q = (req.query.q || '').trim();
+    let list = await parties.find({ user_id: req.user.id });
+    if (q) {
+      const regex = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+      list = list.filter(p => regex.test(p.name));
+    }
+    list.sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || ''));
+    res.json({ parties: list.slice(0, 20) });
+  } catch (e) {
+    console.error(e);
+    res.json({ parties: [] });
+  }
+});
+
+// Search saved products (items)
+app.get('/api/products', auth, async (req, res) => {
+  try {
+    const q = (req.query.q || '').trim();
+    let list = await products.find({ user_id: req.user.id });
+    if (q) {
+      const regex = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+      list = list.filter(p => regex.test(p.name));
+    }
+    list.sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || ''));
+    res.json({ products: list.slice(0, 20) });
+  } catch (e) {
+    console.error(e);
+    res.json({ products: [] });
+  }
+});
+
+// GSTIN Lookup – extract state & attempt public API lookup
+const GSTIN_STATE_MAP = {
+  '01':'Jammu & Kashmir','02':'Himachal Pradesh','03':'Punjab','04':'Chandigarh',
+  '05':'Uttarakhand','06':'Haryana','07':'Delhi','08':'Rajasthan','09':'Uttar Pradesh',
+  '10':'Bihar','11':'Sikkim','12':'Arunachal Pradesh','13':'Nagaland','14':'Manipur',
+  '15':'Mizoram','16':'Tripura','17':'Meghalaya','18':'Assam','19':'West Bengal',
+  '20':'Jharkhand','21':'Odisha','22':'Chhattisgarh','23':'Madhya Pradesh','24':'Gujarat',
+  '25':'Daman & Diu','26':'Dadra & Nagar Haveli','27':'Maharashtra','29':'Karnataka',
+  '30':'Goa','31':'Lakshadweep','32':'Kerala','33':'Tamil Nadu','34':'Puducherry',
+  '35':'Andaman & Nicobar','36':'Telangana','37':'Andhra Pradesh'
+};
+
+// Helper: HTTP GET that returns a promise
+function httpGet(url, timeoutMs = 8000) {
+  return new Promise((resolve, reject) => {
+    const mod = url.startsWith('https') ? require('https') : require('http');
+    const request = mod.get(url, { timeout: timeoutMs }, (response) => {
+      // Follow redirects
+      if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
+        return httpGet(response.headers.location, timeoutMs).then(resolve).catch(reject);
+      }
+      let body = '';
+      response.on('data', chunk => body += chunk);
+      response.on('end', () => {
+        try { resolve(JSON.parse(body)); } catch(e) { resolve(body); }
+      });
+    });
+    request.on('error', reject);
+    request.on('timeout', () => { request.destroy(); reject(new Error('timeout')); });
+  });
+}
+
+app.get('/api/gstin-lookup/:gstin', auth, async (req, res) => {
+  const gstin = (req.params.gstin || '').toUpperCase().trim();
+  const gstinRegex = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[A-Z0-9]{1}Z[A-Z0-9]{1}$/;
+  if (!gstinRegex.test(gstin)) {
+    return res.status(400).json({ error: 'Invalid GSTIN format' });
+  }
+
+  const stateCode = gstin.substring(0, 2);
+  const stateName = GSTIN_STATE_MAP[stateCode] || '';
+  const stateWithCode = stateName ? (stateCode + '-' + stateName) : '';
+
+  // Check if user has a GSTIN API key configured (fallback to default)
+  const user = await users.findOne({ _id: req.user.id });
+  const apiKey = (user && user.gstin_api_key ? user.gstin_api_key.trim() : '') || '73bab7f23f2742306a1dccbd2d8874ec';
+
+  if (apiKey) {
+    // Try gstincheck.co.in with user's API key
+    try {
+      console.log(`[GSTIN] Trying gstincheck with user API key for ${gstin}...`);
+      const raw = await httpGet(`https://sheet.gstincheck.co.in/check/${apiKey}/${gstin}`, 8000);
+      if (raw && raw.flag && raw.data) {
+        const d = raw.data;
+        const addr = d.pradr && d.pradr.addr ? d.pradr.addr : {};
+        const parts = [addr.bno, addr.flno, addr.bnm, addr.st, addr.loc, addr.dst, addr.stcd, addr.pncd].filter(Boolean);
+        console.log(`[GSTIN] gstincheck returned data for ${gstin}`);
+        return res.json({
+          valid: true, gstin, state: stateWithCode, state_name: stateName,
+          legal_name: d.lgnm || '', trade_name: d.tradeNam || '',
+          gst_type: d.dty || '', status: d.sts || '',
+          address: parts.join(', '), pincode: addr.pncd || ''
+        });
+      }
+      console.log(`[GSTIN] gstincheck response:`, JSON.stringify(raw).substring(0, 200));
+    } catch(e) {
+      console.log(`[GSTIN] gstincheck failed: ${e.message}`);
+    }
+  } else {
+    console.log(`[GSTIN] No API key configured. Returning state from GSTIN code only.`);
+  }
+
+  // Fallback — return state extracted from GSTIN code
+  res.json({
+    valid: true, gstin, state: stateWithCode, state_name: stateName,
+    legal_name: '', trade_name: '', gst_type: '', status: '',
+    address: '', pincode: '',
+    needs_api_key: !apiKey
+  });
+});
+
+// Create a party
+app.post('/api/parties', auth, async (req, res) => {
+  try {
+    const { name, phone, email, address, gstin, state, gst_type, billing_address,
+            shipping_address, opening_balance, credit_limit, payment_terms, notes } = req.body;
+    if (!name) return res.status(400).json({ error: 'Party name is required' });
+    const existing = await parties.findOne({ user_id: req.user.id, name });
+    if (existing) return res.status(409).json({ error: 'Party with this name already exists' });
+    const party = await parties.insert({
+      user_id: req.user.id, name, phone: phone || '', email: email || '',
+      address: address || '', gstin: gstin || '', state: state || '',
+      gst_type: gst_type || '', billing_address: billing_address || '',
+      shipping_address: shipping_address || '',
+      opening_balance: opening_balance || 0, credit_limit: credit_limit || 0,
+      payment_terms: payment_terms || '', notes: notes || '',
+      updated_at: new Date().toISOString()
+    });
+    res.json({ party, message: 'Party added!' });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Failed to add party' });
+  }
+});
+
+// Create a product
+app.post('/api/products', auth, async (req, res) => {
+  try {
+    const { name, hsn, size, mrp, rate, gst, unit } = req.body;
+    if (!name) return res.status(400).json({ error: 'Item name is required' });
+    const existing = await products.findOne({ user_id: req.user.id, name });
+    if (existing) return res.status(409).json({ error: 'Item with this name already exists' });
+    const product = await products.insert({
+      user_id: req.user.id, name, hsn: hsn || '', size: size || '', mrp: mrp || 0,
+      rate: rate || 0, gst: gst != null ? gst : 0, unit: unit || 'Pcs',
+      updated_at: new Date().toISOString()
+    });
+    res.json({ product, message: 'Item added!' });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Failed to add item' });
+  }
+});
+
+// Update a party
+app.put('/api/parties/:id', auth, async (req, res) => {
+  try {
+    const { name, phone, email, address, gstin, state } = req.body;
+    await parties.update({ _id: req.params.id, user_id: req.user.id }, {
+      $set: { name: name || '', phone: phone || '', email: email || '',
+        address: address || '', gstin: gstin || '', state: state || '',
+        updated_at: new Date().toISOString() }
+    });
+    const party = await parties.findOne({ _id: req.params.id });
+    res.json({ party, message: 'Party updated' });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Failed to update party' });
+  }
+});
+
+// Delete a party
+app.delete('/api/parties/:id', auth, async (req, res) => {
+  const removed = await parties.remove({ _id: req.params.id, user_id: req.user.id });
+  if (removed === 0) return res.status(404).json({ error: 'Party not found' });
+  res.json({ message: 'Party deleted' });
+});
+
+// Update a product
+app.put('/api/products/:id', auth, async (req, res) => {
+  try {
+    const { name, hsn, size, mrp, rate, gst, unit } = req.body;
+    await products.update({ _id: req.params.id, user_id: req.user.id }, {
+      $set: { name: name || '', hsn: hsn || '', size: size || '', mrp: mrp || 0,
+        rate: rate || 0, gst: gst != null ? gst : 0, unit: unit || 'Pcs',
+        updated_at: new Date().toISOString() }
+    });
+    const product = await products.findOne({ _id: req.params.id });
+    res.json({ product, message: 'Product updated' });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Failed to update product' });
+  }
+});
+
+// Delete a product
+app.delete('/api/products/:id', auth, async (req, res) => {
+  const removed = await products.remove({ _id: req.params.id, user_id: req.user.id });
+  if (removed === 0) return res.status(404).json({ error: 'Product not found' });
+  res.json({ message: 'Product deleted' });
+});
+
+// ─── INVOICE ROUTES ──────────────────────────────────────────
+
+// Stats
+app.get('/api/invoices/stats', auth, async (req, res) => {
+  const all = await invoices.find({ user_id: req.user.id });
+  const stats = {
+    total_invoices: all.length,
+    total_amount: all.reduce((s, i) => s + (i.total || 0), 0),
+    paid_amount: all.filter(i => i.status === 'paid').reduce((s, i) => s + (i.total || 0), 0),
+    unpaid_amount: all.filter(i => i.status !== 'paid').reduce((s, i) => s + (i.total || 0), 0)
+  };
+  res.json({ stats });
+});
+
+// List
+app.get('/api/invoices', auth, async (req, res) => {
+  const list = await invoices.find({ user_id: req.user.id }).sort({ created_at: -1 });
+  res.json({ invoices: list });
+});
+
+// Create
+app.post('/api/invoices', auth, async (req, res) => {
+  try {
+    const {
+      invoice_date, due_date, customer_name, customer_phone, customer_email,
+      customer_address, customer_gstin, customer_state, place_of_supply,
+      items, subtotal, cgst, sgst, igst, total, round_off, total_mrp, notes, status
+    } = req.body;
+
+    if (!customer_name || !items || !items.length) {
+      return res.status(400).json({ error: 'Customer name and at least one item are required' });
+    }
+
+    const count = await invoices.count({ user_id: req.user.id });
+    const now = new Date();
+    const prefix = `INV-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const num = String(count + 1).padStart(4, '0');
+    const invoice_number = `${prefix}-${num}`;
+
+    const inv = await invoices.insert({
+      user_id: req.user.id, invoice_number,
+      invoice_date: invoice_date || now.toISOString().slice(0, 10),
+      due_date: due_date || '', customer_name,
+      customer_phone: customer_phone || '', customer_email: customer_email || '',
+      customer_address: customer_address || '', customer_gstin: customer_gstin || '',
+      customer_state: customer_state || '', place_of_supply: place_of_supply || '',
+      items, subtotal: subtotal || 0, cgst: cgst || 0, sgst: sgst || 0,
+      igst: igst || 0, total: total || 0, round_off: round_off || 0, total_mrp: total_mrp || 0,
+      amount_paid: 0, notes: notes || '', status: status || 'unpaid',
+      created_at: now.toISOString()
+    });
+
+    // Auto-save party and items for future autocomplete
+    try {
+      const partyData = {
+        user_id: req.user.id, name: customer_name,
+        phone: customer_phone || '', email: customer_email || '',
+        address: customer_address || '', gstin: customer_gstin || '',
+        state: customer_state || '', updated_at: now.toISOString()
+      };
+      const existingParty = await parties.findOne({ user_id: req.user.id, name: customer_name });
+      if (existingParty) await parties.update({ _id: existingParty._id }, { $set: partyData });
+      else await parties.insert(partyData);
+
+      for (const item of items) {
+        const productData = {
+          user_id: req.user.id, name: item.name,
+          hsn: item.hsn || '', size: item.size || '', mrp: item.mrp || 0,
+          rate: item.rate || 0, gst: item.gst || 0, unit: item.unit || 'Pcs',
+          updated_at: now.toISOString()
+        };
+        const existingProduct = await products.findOne({ user_id: req.user.id, name: item.name });
+        if (existingProduct) await products.update({ _id: existingProduct._id }, { $set: productData });
+        else await products.insert(productData);
+      }
+    } catch (autoErr) {
+      console.error('Auto-save error (non-critical):', autoErr);
+    }
+
+    res.json({ invoice: { ...inv, id: inv._id }, message: 'Invoice created!' });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Failed to create invoice' });
+  }
+});
+
+// Get one
+app.get('/api/invoices/:id', auth, async (req, res) => {
+  const inv = await invoices.findOne({ _id: req.params.id, user_id: req.user.id });
+  if (!inv) return res.status(404).json({ error: 'Invoice not found' });
+  res.json({ invoice: { ...inv, id: inv._id } });
+});
+
+// Update status
+app.patch('/api/invoices/:id', auth, async (req, res) => {
+  const { status, amount_paid } = req.body;
+  await invoices.update({ _id: req.params.id, user_id: req.user.id },
+    { $set: { status: status || 'unpaid', amount_paid: amount_paid || 0 } });
+  const inv = await invoices.findOne({ _id: req.params.id, user_id: req.user.id });
+  if (!inv) return res.status(404).json({ error: 'Invoice not found' });
+  res.json({ invoice: { ...inv, id: inv._id }, message: 'Invoice updated' });
+});
+
+// Delete
+app.delete('/api/invoices/:id', auth, async (req, res) => {
+  const removed = await invoices.remove({ _id: req.params.id, user_id: req.user.id });
+  if (removed === 0) return res.status(404).json({ error: 'Invoice not found' });
+  res.json({ message: 'Invoice deleted' });
+});
+
+// ─── REPORTS ────────────────────────────────────────────────
+app.get('/api/reports', auth, async (req, res) => {
+  try {
+    const { from, to } = req.query;
+    let allInvoices = await invoices.find({ user_id: req.user.id }).sort({ invoice_date: -1 });
+    if (from || to) {
+      allInvoices = allInvoices.filter(inv => {
+        if (from && inv.invoice_date < from) return false;
+        if (to && inv.invoice_date > to) return false;
+        return true;
+      });
+    }
+    const hsnMap = {};
+    allInvoices.forEach(inv => {
+      const isIntra = !inv.igst || inv.igst === 0;
+      (inv.items || []).forEach(item => {
+        const hsn = item.hsn || 'N/A';
+        const key = hsn + '|' + (item.gst || 0);
+        if (!hsnMap[key]) {
+          hsnMap[key] = { hsn, gst_rate: item.gst || 0, taxable: 0, cgst_rate: 0, cgst: 0, sgst_rate: 0, sgst: 0, igst_rate: 0, igst: 0, total_tax: 0 };
+        }
+        const taxable = (item.qty || 0) * (item.rate || 0);
+        const gstAmt = taxable * (item.gst || 0) / 100;
+        hsnMap[key].taxable += taxable;
+        if (isIntra) {
+          hsnMap[key].cgst_rate = (item.gst || 0) / 2;
+          hsnMap[key].sgst_rate = (item.gst || 0) / 2;
+          hsnMap[key].cgst += gstAmt / 2;
+          hsnMap[key].sgst += gstAmt / 2;
+        } else {
+          hsnMap[key].igst_rate = item.gst || 0;
+          hsnMap[key].igst += gstAmt;
+        }
+        hsnMap[key].total_tax += gstAmt;
+      });
+    });
+    const summary = {
+      total_invoices: allInvoices.length,
+      total_amount: allInvoices.reduce((s, i) => s + (i.total || 0), 0),
+      total_tax: allInvoices.reduce((s, i) => s + (i.cgst || 0) + (i.sgst || 0) + (i.igst || 0), 0),
+      paid_amount: allInvoices.filter(i => i.status === 'paid').reduce((s, i) => s + (i.total || 0), 0),
+      unpaid_amount: allInvoices.filter(i => i.status !== 'paid').reduce((s, i) => s + (i.total || 0), 0),
+    };
+    res.json({ invoices: allInvoices, summary, hsn_summary: Object.values(hsnMap) });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Failed to generate report' });
+  }
+});
+
+// ─── SPA fallback ────────────────────────────────────────────
+app.get('/dashboard', (req, res) => res.sendFile(path.join(__dirname, 'public', 'dashboard.html')));
+app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
+
+// ─── Start ───────────────────────────────────────────────────
+app.listen(PORT, () => {
+  console.log(`\n  BillWise server running at http://localhost:${PORT}`);
+  console.log(`  Dashboard: http://localhost:${PORT}/dashboard`);
+  if (IS_DEV) console.log(`  [DEV MODE] OTPs will be logged here & returned in API responses\n`);
+});

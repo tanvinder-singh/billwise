@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="en-IN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Free GST Billing Software for small businesses in India. Create GST invoices, manage inventory, file GST returns. Trusted by lakhs of Indian SMEs." />
+  <title>BillWise – GST Billing Software for Small Business | India</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css?v=2" />
+</head>
+<body>
+  <!-- Header -->
+  <header class="header">
+    <div class="container header-inner">
+      <a href="/" class="logo">
+        <span class="logo-icon">₹</span>
+        <span class="logo-text">BillWise</span>
+      </a>
+      <nav class="nav" aria-label="Main navigation">
+        <ul class="nav-list">
+          <li><a href="#features">Features</a></li>
+          <li><a href="#industries">Industries</a></li>
+          <li><a href="#benefits">Benefits</a></li>
+          <li><a href="#reviews">Reviews</a></li>
+          <li><a href="#pricing">Pricing</a></li>
+        </ul>
+      </nav>
+      <div class="header-actions">
+        <button type="button" class="btn btn-ghost" id="openLogin">Login</button>
+        <button type="button" class="btn btn-primary" id="openSignup">Create Account</button>
+        <!-- Shown when logged in -->
+        <div class="user-menu" id="userMenu" style="display:none;">
+          <span class="user-avatar" id="userAvatar">U</span>
+          <span class="user-name" id="userName"></span>
+          <a href="/dashboard" class="btn btn-primary btn-sm">Dashboard</a>
+          <button type="button" class="btn btn-ghost btn-sm" id="logoutBtn">Logout</button>
+        </div>
+      </div>
+      <button type="button" class="menu-toggle" aria-label="Open menu" aria-expanded="false">
+        <span></span><span></span><span></span>
+      </button>
+    </div>
+  </header>
+
+  <main>
+    <!-- Hero -->
+    <section class="hero">
+      <div class="container hero-inner">
+        <div class="hero-content">
+          <p class="hero-badge">GST Compliant • Made for India</p>
+          <h1 class="hero-title">
+            GST Billing Software for <span class="highlight">Small Businesses</span> in India
+          </h1>
+          <p class="hero-desc">
+            Manage your business professionally with BillWise—billing, inventory, and accounting in one place. Join lakhs of Indian SMEs who trust us for GST-compliant invoicing.
+          </p>
+          <div class="hero-cta">
+            <button type="button" class="btn btn-primary btn-lg" id="heroCta">Start Free – Create Account</button>
+            <a href="#features" class="btn btn-outline btn-lg">See Features</a>
+          </div>
+        </div>
+        <div class="hero-visual">
+          <div class="hero-card">
+            <div class="hero-card-header">
+              <span>Tax Invoice</span>
+              <span class="badge">Preview</span>
+            </div>
+            <div class="hero-card-body">
+              <div class="sample-biz">Singh Traders</div>
+              <div class="sample-meta">
+                <span>GSTIN: 01COGPS7635F1ZX</span>
+                <span>No: 36 &bull; 23/01/2026</span>
+              </div>
+              <div class="sample-party">
+                <div><strong>Bill To:</strong> Lucky Pharmaceuticals</div>
+                <div>State: 01-Jammu &amp; Kashmir</div>
+              </div>
+              <table class="sample-table">
+                <thead><tr><th>#</th><th>Item</th><th>HSN</th><th>Qty</th><th>GST</th><th>Amt</th></tr></thead>
+                <tbody>
+                  <tr><td>1</td><td>Packaging Clip</td><td>8309</td><td>4</td><td>18%</td><td>₹840</td></tr>
+                  <tr><td>2</td><td>BOPP Tape 72mm</td><td>3919</td><td>16</td><td>18%</td><td>₹1,840</td></tr>
+                  <tr><td>3</td><td>Strapping Roll</td><td>3920</td><td>16</td><td>18%</td><td>₹1,280</td></tr>
+                </tbody>
+              </table>
+              <div class="sample-tax">
+                <div><span>CGST (9%)</span><span>₹390.75</span></div>
+                <div><span>SGST (9%)</span><span>₹390.75</span></div>
+              </div>
+              <div class="sample-total">
+                <span>Total</span><span>₹5,207.00</span>
+              </div>
+              <div class="sample-words">Five Thousand Two Hundred Seven Rupees Only</div>
+              <div class="sample-footer">
+                <div class="sample-qr">
+                  <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="1.5"><rect x="2" y="2" width="8" height="8" rx="1"/><rect x="14" y="2" width="8" height="8" rx="1"/><rect x="2" y="14" width="8" height="8" rx="1"/><rect x="14" y="14" width="4" height="4" rx="0.5"/><rect x="20" y="14" width="2" height="2"/><rect x="14" y="20" width="2" height="2"/><rect x="18" y="18" width="4" height="4" rx="0.5"/></svg>
+                  <small>UPI Pay</small>
+                </div>
+                <div class="sample-sig">
+                  <span class="sig-line"></span>
+                  <small>Authorized Signatory</small>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- Trust strip -->
+      <div class="trust-strip">
+        <div class="container">
+          <div class="trust-items">
+            <div class="trust-item">
+              <span class="trust-number">5 Lakh+</span>
+              <span class="trust-label">Happy Customers</span>
+            </div>
+            <div class="trust-item">
+              <svg class="trust-svg" width="28" height="28" fill="none" stroke="var(--text)" stroke-width="1.5" viewBox="0 0 24 24"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12" y2="18.01" stroke-width="2" stroke-linecap="round"/></svg>
+              <span class="trust-label">Free Mobile App</span>
+            </div>
+            <div class="trust-item">
+              <div class="trust-rating-block">
+                <span class="trust-number">4.7/5</span>
+                <div class="trust-stars">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="#f59e0b"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="#f59e0b"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="#f59e0b"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="#f59e0b"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="#e2e8f0"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77V2z" fill="#f59e0b"/></svg>
+                </div>
+              </div>
+              <span class="trust-label">Google Play Rating</span>
+            </div>
+            <div class="trust-item">
+              <svg class="trust-svg" width="28" height="28" fill="none" stroke="var(--text)" stroke-width="1.5" viewBox="0 0 24 24"><rect x="2" y="4" width="16" height="12" rx="2"/><path d="M6 20h12M22 8v8a2 2 0 01-2 2h-2"/><line x1="10" y1="16" x2="10" y2="20"/></svg>
+              <span class="trust-label">Mobile + Desktop</span>
+            </div>
+            <div class="trust-item">
+              <svg class="trust-svg" width="28" height="28" fill="none" stroke="var(--text)" stroke-width="1.5" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>
+              <span class="trust-label">Multi-User</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Features -->
+    <section id="features" class="section features">
+      <div class="container">
+        <h2 class="section-title">Everything you need for GST billing</h2>
+        <p class="section-desc">Create invoices, track inventory, and stay GST compliant—all from one app.</p>
+        <div class="features-grid">
+          <article class="feature-card">
+            <div class="feature-icon">📄</div>
+            <h3>GST Invoices in Minutes</h3>
+            <p>Generate professional GST bills with correct HSN/SAC codes. Share via WhatsApp, email, or print in A4, A5, 2", 3".</p>
+          </article>
+          <article class="feature-card">
+            <div class="feature-icon">📦</div>
+            <h3>Inventory Management</h3>
+            <p>Track stock, set low-stock alerts, manage batches and expiry. Auto-update on sales and purchases.</p>
+          </article>
+          <article class="feature-card">
+            <div class="feature-icon">💰</div>
+            <h3>Payment Reminders</h3>
+            <p>Send payment reminders via WhatsApp & email. Track receivables and payables from one dashboard.</p>
+          </article>
+          <article class="feature-card">
+            <div class="feature-icon">📊</div>
+            <h3>GST Reports</h3>
+            <p>Generate GSTR-1, GSTR-3B, GSTR-9 and 50+ reports. Export to PDF/Excel for your CA.</p>
+          </article>
+          <article class="feature-card">
+            <div class="feature-icon">🖨️</div>
+            <h3>Thermal & Laser Print</h3>
+            <p>Print on thermal (2"/3") or regular (A4/A5) printers. Bluetooth and USB support.</p>
+          </article>
+          <article class="feature-card">
+            <div class="feature-icon">☁️</div>
+            <h3>Auto Backup</h3>
+            <p>Auto backup to Google Drive and local storage. Your data is encrypted and secure.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- Industries -->
+    <section id="industries" class="section industries">
+      <div class="container">
+        <h2 class="section-title">Built for every industry</h2>
+        <p class="section-desc">Retail, pharmacy, restaurant, jewellery—one software for all.</p>
+        <div class="industries-grid">
+          <a href="#" class="industry-card">Retail Shop</a>
+          <a href="#" class="industry-card">Pharmacy</a>
+          <a href="#" class="industry-card">Grocery</a>
+          <a href="#" class="industry-card">Restaurant</a>
+          <a href="#" class="industry-card">Jewellery</a>
+          <a href="#" class="industry-card">Clothing / Apparel</a>
+        </div>
+      </div>
+    </section>
+
+    <!-- Benefits -->
+    <section id="benefits" class="section benefits">
+      <div class="container">
+        <h2 class="section-title">Why small businesses choose BillWise</h2>
+        <div class="benefits-list">
+          <div class="benefit-item">
+            <span class="benefit-icon">✓</span>
+            <div>
+              <h3>Lifetime free on mobile</h3>
+              <p>Create GST invoices, manage inventory, and view reports—free forever on the mobile app.</p>
+            </div>
+          </div>
+          <div class="benefit-item">
+            <span class="benefit-icon">✓</span>
+            <div>
+              <h3>Works offline</h3>
+              <p>Create bills and record sales even without internet. Sync when you're back online.</p>
+            </div>
+          </div>
+          <div class="benefit-item">
+            <span class="benefit-icon">✓</span>
+            <div>
+              <h3>No training needed</h3>
+              <p>Simple, Hindi-friendly interface. Start billing in minutes, not days.</p>
+            </div>
+          </div>
+          <div class="benefit-item">
+            <span class="benefit-icon">✓</span>
+            <div>
+              <h3>Data in your control</h3>
+              <p>Your data stays on your device. Optional cloud backup. We don't sell your data.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Customer Reviews -->
+    <section id="reviews" class="section reviews">
+      <div class="container">
+        <h2 class="section-title">Trusted by small businesses across India</h2>
+        <p class="section-desc">See what our customers say about BillWise.</p>
+        <div class="reviews-stats">
+          <div class="reviews-score">
+            <span class="score-number">4.7</span>
+            <div class="score-right">
+              <div class="score-stars">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="#f59e0b"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="#f59e0b"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="#f59e0b"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="#f59e0b"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="#e2e8f0"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77V2z" fill="#f59e0b"/></svg>
+              </div>
+              <span class="score-count">Based on 15,800+ reviews</span>
+            </div>
+          </div>
+          <div class="rating-bars">
+            <div class="rating-bar-row"><span>5</span><svg width="12" height="12" viewBox="0 0 24 24" fill="#f59e0b"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg><div class="rating-bar"><div class="rating-bar-fill" style="width:72%"></div></div><span class="bar-pct">72%</span></div>
+            <div class="rating-bar-row"><span>4</span><svg width="12" height="12" viewBox="0 0 24 24" fill="#f59e0b"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg><div class="rating-bar"><div class="rating-bar-fill" style="width:18%"></div></div><span class="bar-pct">18%</span></div>
+            <div class="rating-bar-row"><span>3</span><svg width="12" height="12" viewBox="0 0 24 24" fill="#f59e0b"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg><div class="rating-bar"><div class="rating-bar-fill" style="width:6%"></div></div><span class="bar-pct">6%</span></div>
+            <div class="rating-bar-row"><span>2</span><svg width="12" height="12" viewBox="0 0 24 24" fill="#f59e0b"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg><div class="rating-bar"><div class="rating-bar-fill" style="width:2%"></div></div><span class="bar-pct">2%</span></div>
+            <div class="rating-bar-row"><span>1</span><svg width="12" height="12" viewBox="0 0 24 24" fill="#f59e0b"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg><div class="rating-bar"><div class="rating-bar-fill" style="width:2%"></div></div><span class="bar-pct">2%</span></div>
+          </div>
+        </div>
+        <div class="reviews-grid">
+          <div class="review-card">
+            <div class="review-stars">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="#f59e0b"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="#f59e0b"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="#f59e0b"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="#f59e0b"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="#f59e0b"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+            </div>
+            <p class="review-text">"Best billing software for my kirana store. GST invoice ban jata hai 30 seconds mein. My CA also loves the reports."</p>
+            <div class="review-author">
+              <div class="review-avatar">RS</div>
+              <div>
+                <div class="review-name">Rajesh Sharma</div>
+                <div class="review-biz">Sharma General Store, Jaipur</div>
+              </div>
+            </div>
+          </div>
+          <div class="review-card">
+            <div class="review-stars">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="#f59e0b"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="#f59e0b"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="#f59e0b"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="#f59e0b"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="#f59e0b"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+            </div>
+            <p class="review-text">"I run a pharmacy and tried many apps. BillWise is the simplest. Batch tracking, expiry alerts, GST filing—everything in one place!"</p>
+            <div class="review-author">
+              <div class="review-avatar">PA</div>
+              <div>
+                <div class="review-name">Priya Agarwal</div>
+                <div class="review-biz">LifeCare Pharmacy, Lucknow</div>
+              </div>
+            </div>
+          </div>
+          <div class="review-card">
+            <div class="review-stars">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="#f59e0b"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="#f59e0b"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="#f59e0b"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="#f59e0b"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="#e2e8f0"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+            </div>
+            <p class="review-text">"Shifted from Tally to BillWise. Much easier for my clothing shop. Customers love the professional invoices with our logo."</p>
+            <div class="review-author">
+              <div class="review-avatar">MK</div>
+              <div>
+                <div class="review-name">Mohit Kumar</div>
+                <div class="review-biz">Fashion Hub, Delhi</div>
+              </div>
+            </div>
+          </div>
+          <div class="review-card">
+            <div class="review-stars">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="#f59e0b"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="#f59e0b"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="#f59e0b"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="#f59e0b"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="#f59e0b"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+            </div>
+            <p class="review-text">"UPI QR on invoice is a game changer. Customers scan and pay instantly. Payment collection improved by 40%!"</p>
+            <div class="review-author">
+              <div class="review-avatar">SG</div>
+              <div>
+                <div class="review-name">Sunita Gupta</div>
+                <div class="review-biz">Sri Lakshmi Electronics, Hyderabad</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- CTA -->
+    <section id="pricing" class="section cta-section">
+      <div class="container cta-inner">
+        <h2 class="cta-title">Start billing the smart way</h2>
+        <p class="cta-desc">Create your free account. No credit card. No commitment.</p>
+        <div class="cta-buttons">
+          <button type="button" class="btn btn-primary btn-lg" id="ctaSignup">Create Free Account</button>
+        </div>
+        <p class="cta-note">Free forever • Premium features optional</p>
+      </div>
+    </section>
+  </main>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="container">
+      <div class="footer-grid">
+        <div class="footer-brand">
+          <a href="/" class="logo">
+            <span class="logo-icon">₹</span>
+            <span class="logo-text">BillWise</span>
+          </a>
+          <p>GST Billing Software for Indian small businesses.</p>
+        </div>
+        <div class="footer-links">
+          <h4>Product</h4>
+          <ul>
+            <li><a href="#features">Features</a></li>
+            <li><a href="#pricing">Pricing</a></li>
+          </ul>
+        </div>
+        <div class="footer-links">
+          <h4>Company</h4>
+          <ul>
+            <li><a href="#">About Us</a></li>
+            <li><a href="#">Contact</a></li>
+            <li><a href="#">Privacy Policy</a></li>
+          </ul>
+        </div>
+        <div class="footer-links">
+          <h4>Support</h4>
+          <ul>
+            <li><a href="#">Help Centre</a></li>
+            <li><a href="#">GST Guides</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <p>&copy; 2026 BillWise. For small businesses in India.</p>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Login Modal -->
+  <div class="modal-overlay" id="loginModal">
+    <div class="modal">
+      <button type="button" class="modal-close" aria-label="Close">&times;</button>
+      <div class="modal-header">
+        <h2>Welcome back</h2>
+        <p>Login to your BillWise account</p>
+      </div>
+      <!-- Login Tabs -->
+      <div class="auth-tabs">
+        <button type="button" class="auth-tab active" data-tab="email-login">Email / Password</button>
+        <button type="button" class="auth-tab" data-tab="phone-login">Phone OTP</button>
+      </div>
+      <!-- Email login -->
+      <form id="loginForm" class="modal-form" data-panel="email-login" novalidate>
+        <div class="form-group">
+          <label for="loginEmail">Email or Mobile</label>
+          <input type="text" id="loginEmail" placeholder="you@example.com or 9876543210" required autocomplete="username" />
+        </div>
+        <div class="form-group">
+          <label for="loginPassword">Password</label>
+          <div class="password-wrapper">
+            <input type="password" id="loginPassword" placeholder="Enter your password" required autocomplete="current-password" />
+            <button type="button" class="toggle-password" aria-label="Show password">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </div>
+        </div>
+        <p class="form-error" id="loginError"></p>
+        <button type="submit" class="btn btn-primary btn-full">Login</button>
+        <p class="form-footer">Don't have an account? <button type="button" class="link-btn" id="switchToSignup">Create Account</button></p>
+      </form>
+      <!-- Phone OTP login -->
+      <form id="phoneLoginForm" class="modal-form" data-panel="phone-login" style="display:none" novalidate>
+        <div class="form-group">
+          <label for="otpPhone">Mobile Number</label>
+          <div class="input-prefix-wrap">
+            <span class="input-prefix">+91</span>
+            <input type="tel" id="otpPhone" placeholder="9876543210" required pattern="[6-9][0-9]{9}" maxlength="10" />
+          </div>
+        </div>
+        <div id="otpStep2" style="display:none">
+          <div class="form-group">
+            <label for="otpCode">Enter OTP</label>
+            <input type="text" id="otpCode" placeholder="6-digit OTP" maxlength="6" pattern="[0-9]{6}" required />
+          </div>
+        </div>
+        <p class="form-error" id="phoneLoginError"></p>
+        <button type="button" class="btn btn-primary btn-full" id="sendOtpBtn">Send OTP</button>
+        <button type="submit" class="btn btn-primary btn-full" id="verifyOtpBtn" style="display:none">Verify & Login</button>
+        <p class="form-footer" id="otpDevHint" style="display:none"></p>
+        <p class="form-footer">Don't have an account? <button type="button" class="link-btn switch-to-signup">Create Account</button></p>
+      </form>
+    </div>
+  </div>
+
+  <!-- Signup Modal -->
+  <div class="modal-overlay" id="signupModal">
+    <div class="modal">
+      <button type="button" class="modal-close" aria-label="Close">&times;</button>
+      <div class="modal-header">
+        <h2>Create your account</h2>
+        <p>Start GST billing in minutes—free</p>
+      </div>
+      <form id="signupForm" class="modal-form" novalidate>
+        <div class="form-group">
+          <label for="signupName">Business / Your Name</label>
+          <input type="text" id="signupName" placeholder="e.g. Sharma Electronics" required />
+        </div>
+        <div class="form-group">
+          <label for="signupEmail">Email</label>
+          <input type="email" id="signupEmail" placeholder="you@example.com" required autocomplete="email" />
+        </div>
+        <div class="form-group">
+          <label for="signupMobile">Mobile Number</label>
+          <div class="input-prefix-wrap">
+            <span class="input-prefix">+91</span>
+            <input type="tel" id="signupMobile" placeholder="9876543210" required pattern="[6-9][0-9]{9}" maxlength="10" autocomplete="tel" />
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="signupPassword">Password</label>
+          <div class="password-wrapper">
+            <input type="password" id="signupPassword" placeholder="Min 6 characters" required minlength="6" autocomplete="new-password" />
+            <button type="button" class="toggle-password" aria-label="Show password">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="signupConfirm">Confirm Password</label>
+          <div class="password-wrapper">
+            <input type="password" id="signupConfirm" placeholder="Re-enter password" required minlength="6" autocomplete="new-password" />
+            <button type="button" class="toggle-password" aria-label="Show password">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </div>
+        </div>
+        <p class="form-error" id="signupError"></p>
+        <button type="submit" class="btn btn-primary btn-full">Create Account</button>
+        <p class="form-footer">Already have an account? <button type="button" class="link-btn" id="switchToLogin">Login</button></p>
+      </form>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div class="toast" id="toast"></div>
+
+  <script src="script.js"></script>
+</body>
+</html>
