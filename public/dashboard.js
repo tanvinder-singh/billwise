@@ -136,7 +136,9 @@
       if (!map[key]) {
         map[key] = { hsn: hsn, gst_rate: item.gst || 0, taxable: 0, cgst_rate: 0, cgst: 0, sgst_rate: 0, sgst: 0, igst_rate: 0, igst: 0, total_tax: 0 };
       }
-      var taxable = (item.qty || 0) * (item.rate || 0);
+      var lineTotal = (item.qty || 0) * (item.rate || 0);
+      var discAmt = item.disc_amt || (lineTotal * (item.disc_pct || 0) / 100);
+      var taxable = lineTotal - discAmt;
       var gstAmt = taxable * (item.gst || 0) / 100;
       map[key].taxable += taxable;
       if (isIntra) {
@@ -1247,18 +1249,22 @@
       var items = inv.items || [];
       var u = currentUser || {};
 
-      // Compute per-item inclusive amounts
-      var totalQty = 0, totalGstAmt = 0, totalInclAmount = 0, totalTaxable = 0, totalMrpAmount = 0;
+      // Compute per-item inclusive amounts (with discount applied)
+      var totalQty = 0, totalGstAmt = 0, totalInclAmount = 0, totalTaxable = 0, totalMrpAmount = 0, totalDiscountAmt = 0;
       items.forEach(function (item) {
-        var taxable = (item.qty || 0) * (item.rate || 0);
+        var lineTotal = (item.qty || 0) * (item.rate || 0);
+        var discAmt = item.disc_amt || (lineTotal * (item.disc_pct || 0) / 100);
+        var taxable = lineTotal - discAmt;
         var gstAmt = taxable * (item.gst || 0) / 100;
         item._taxable = taxable;
         item._gst_amount = gstAmt;
         item._amount = taxable + gstAmt;
+        item._disc_amt = discAmt;
         totalQty += (item.qty || 0);
         totalGstAmt += gstAmt;
         totalInclAmount += taxable + gstAmt;
         totalTaxable += taxable;
+        totalDiscountAmt += discAmt;
         totalMrpAmount += ((item.mrp || 0) * (item.qty || 0));
       });
 
@@ -1266,10 +1272,10 @@
       var grandTotal = inv.total || Math.round(totalInclAmount);
       var amountPaid = inv.amount_paid || 0;
       var balance = grandTotal - amountPaid;
-      // You Saved = (MRP total - rate-based subtotal) + discount amount
-      var mrpSavings = totalMrpAmount > totalTaxable ? totalMrpAmount - totalTaxable : 0;
-      var discountSavings = inv.discount || 0;
-      var youSaved = mrpSavings + discountSavings;
+      // You Saved = (MRP total - rate-based subtotal before discount) + discount amount
+      var priceBeforeDisc = totalTaxable + totalDiscountAmt;
+      var mrpSavings = totalMrpAmount > priceBeforeDisc ? totalMrpAmount - priceBeforeDisc : 0;
+      var youSaved = mrpSavings + totalDiscountAmt;
       var isIntra = !inv.igst || inv.igst === 0;
       var taxSummary = computeTaxSummary(items, isIntra);
 
@@ -1342,10 +1348,13 @@
       html += '</div></div>';
 
       // Items table
+      var hasDiscount = totalDiscountAmt > 0;
       html += '<div class="table-wrap"><table class="inv-items-table"><thead><tr>' +
         '<th>#</th><th class="text-left">Item name</th><th>HSN/SAC</th>' +
         '<th>Size</th><th>MRP(\u20B9)</th><th>Quantity</th><th>Unit</th>' +
-        '<th>Price/Unit(\u20B9)</th><th>GST(\u20B9)</th><th>Amount(\u20B9)</th></tr></thead><tbody>';
+        '<th>Price/Unit(\u20B9)</th>' +
+        (hasDiscount ? '<th>Disc(\u20B9)</th>' : '') +
+        '<th>GST(\u20B9)</th><th>Amount(\u20B9)</th></tr></thead><tbody>';
       items.forEach(function (item, i) {
         html += '<tr><td>' + (i + 1) + '</td>';
         html += '<td class="text-left">' + esc(item.name) + '</td>';
@@ -1355,12 +1364,17 @@
         html += '<td>' + item.qty + '</td>';
         html += '<td>' + (item.unit || 'Pcs') + '</td>';
         html += '<td>' + formatINR(item.rate) + '</td>';
+        if (hasDiscount) {
+          html += '<td>' + (item._disc_amt ? formatINR(item._disc_amt) + (item.disc_pct ? '<br><small>(' + item.disc_pct + '%)</small>' : '') : '-') + '</td>';
+        }
         html += '<td>' + formatINR(item._gst_amount) + '<br><small>(' + item.gst + '%)</small></td>';
         html += '<td>' + formatINR(item._amount) + '</td></tr>';
       });
+      var footColspan = hasDiscount ? 6 : 5;
       html += '</tbody><tfoot><tr>' +
-        '<td colspan="5" class="text-left" style="font-weight:700">Total</td>' +
+        '<td colspan="' + footColspan + '" class="text-left" style="font-weight:700">Total</td>' +
         '<td style="font-weight:700">' + totalQty + '</td><td></td><td></td>' +
+        (hasDiscount ? '<td></td>' : '') +
         '<td style="font-weight:700">' + formatINR(totalGstAmt) + '</td>' +
         '<td style="font-weight:700">' + formatINR(totalInclAmount) + '</td>' +
         '</tr></tfoot></table></div>';
@@ -1409,10 +1423,11 @@
       html += '</tbody></table></div></div>';
 
       // Totals section
+      var displayDiscount = totalDiscountAmt || inv.discount || 0;
       html += '<div class="inv-totals-section"><table>' +
-        '<tr><td>Sub Total</td><td>:</td><td class="text-right">' + formatINR(totalInclAmount) + '</td></tr>';
-      if (inv.discount && inv.discount > 0) {
-        html += '<tr><td>Discount</td><td>:</td><td class="text-right">-' + formatINR(inv.discount) + '</td></tr>';
+        '<tr><td>Sub Total</td><td>:</td><td class="text-right">' + formatINR(totalInclAmount + displayDiscount) + '</td></tr>';
+      if (displayDiscount > 0) {
+        html += '<tr><td>Discount</td><td>:</td><td class="text-right">-' + formatINR(displayDiscount) + '</td></tr>';
       }
       if (roundOff !== 0) {
         var roSign = roundOff >= 0 ? '+' : '-';
