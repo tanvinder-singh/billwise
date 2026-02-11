@@ -8,7 +8,7 @@ set -e
 
 # ─── Configuration ───────────────────────────────
 EC2_IP="54.235.24.234"
-PEM_FILE="$HOME/Downloads/test-tan.pem"
+PEM_FILE="$HOME/Downloads/test-tan-bill.pem"
 EC2_USER="ubuntu"
 APP_DIR="/home/ubuntu/billwise"
 # ─────────────────────────────────────────────────
