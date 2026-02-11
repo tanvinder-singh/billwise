@@ -592,18 +592,43 @@
       if (!itemList.length) {
         html += '<div class="empty-state" style="grid-column:1/-1">No saved items yet. Create an invoice and items will be saved automatically!</div>';
       }
+      var is = (currentUser && currentUser.item_settings) || {};
       itemList.forEach(function (item) {
         var iid = item.id || item._id;
+        // Build badge row
+        var badges = '';
+        if (is.category && item.category) {
+          badges += '<span class="item-badge badge-category">' + esc(item.category) + '</span>';
+        }
+        if (is.stock) {
+          var sq = item.stock_quantity || 0;
+          var lt = item.low_stock_threshold || is.low_stock_threshold || 10;
+          if (sq <= 0) badges += '<span class="item-badge badge-stock out">Out of Stock</span>';
+          else if (sq <= lt) badges += '<span class="item-badge badge-stock low">Low: ' + sq + '</span>';
+          else badges += '<span class="item-badge badge-stock">Stock: ' + sq + '</span>';
+        }
+        if (is.batch_tracking && item.batch_no) {
+          badges += '<span class="item-badge badge-batch">Batch: ' + esc(item.batch_no) + '</span>';
+        }
+        if (is.batch_tracking && item.exp_date) {
+          var expStr = '';
+          try { expStr = new Date(item.exp_date).toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' }); } catch(e) { expStr = item.exp_date; }
+          var isExpired = new Date(item.exp_date) < new Date();
+          badges += '<span class="item-badge badge-expiry' + (isExpired ? ' expired' : '') + '">' + (isExpired ? 'Expired: ' : 'Exp: ') + expStr + '</span>';
+        }
         html += '<div class="item-card" data-name="' + esc(item.name).toLowerCase() + '" data-id="' + iid + '" style="cursor:pointer">' +
           '<div class="card-actions">' +
             '<button type="button" class="edit-btn" title="Edit" data-id="' + iid + '"><svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>' +
             '<button type="button" class="del" title="Delete" data-id="' + iid + '"><svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg></button>' +
           '</div>' +
           '<div class="card-name">' + esc(item.name) + '</div>' +
+          (badges ? '<div style="margin:4px 0 2px">' + badges + '</div>' : '') +
           (item.hsn ? '<div class="card-detail">HSN: ' + esc(item.hsn) + '</div>' : '') +
           '<div class="card-detail">Rate: ' + formatINR(item.rate || 0) + ' | GST: ' + (item.gst || 0) + '%</div>' +
           (item.size ? '<div class="card-detail">Size: ' + esc(item.size) + '</div>' : '') +
           '<div class="card-detail">Unit: ' + (item.unit || 'Pcs') + '</div>' +
+          (item.description ? '<div class="card-detail" style="color:var(--text-muted);font-style:italic">' + esc(item.description) + '</div>' : '') +
+          (is.batch_tracking && item.model_no ? '<div class="card-detail">Model: ' + esc(item.model_no) + '</div>' : '') +
         '</div>';
       });
       html += '</div>';
@@ -1046,6 +1071,11 @@
     var unitOptions = ['Pcs','Kg','Gm','Ltr','Mtr','Sq.Ft','Box','Bag','Dozen','Pair','Set','Roll','Ton','Quintal','Nos','Bundle','Other'];
     var unitOpts = unitOptions.map(function (u) { return '<option value="' + u + '">' + u + '</option>'; }).join('');
     var gstOpts = GST_RATES.map(function (r) { return '<option value="' + r + '">' + r + '%</option>'; }).join('');
+    var is = (currentUser && currentUser.item_settings) || {};
+    var catOpts = '';
+    if (is.category && is.categories && is.categories.length) {
+      catOpts = '<option value="">-- Select --</option>' + is.categories.map(function(c) { return '<option value="' + esc(c) + '">' + esc(c) + '</option>'; }).join('');
+    }
     var html = '<div class="add-form-card">' +
       '<div class="add-form-header"><h3>Add New Item</h3>' +
       '<button type="button" class="btn btn-ghost btn-sm" onclick="window.goTo(\'items\')">&larr; Back to Items</button></div>' +
@@ -1058,6 +1088,14 @@
           '<div class="form-group"><label>GST Rate</label><select id="aiGst">' + gstOpts + '</select></div>' +
           '<div class="form-group"><label>Unit</label><select id="aiUnit">' + unitOpts + '</select></div>' +
           '<div class="form-group"><label>Size</label><input id="aiSize" placeholder="e.g. L, XL, 500ml"></div>' +
+          '<div class="form-group full"><label>Description</label><textarea id="aiDesc" rows="2" placeholder="Optional item description"></textarea></div>' +
+          (is.category ? '<div class="form-group"><label>Category</label><select id="aiCategory">' + catOpts + '</select></div>' : '') +
+          (is.stock ? '<div class="form-group"><label>Opening Stock</label><input id="aiStockQty" type="number" step="0.01" min="0" placeholder="0" value="0"></div>' +
+            '<div class="form-group"><label>Low Stock Alert</label><input id="aiLowStock" type="number" step="1" min="0" placeholder="' + (is.low_stock_threshold || 10) + '" value="' + (is.low_stock_threshold || 10) + '"></div>' : '') +
+          (is.batch_tracking ? '<div class="form-group"><label>Batch No.</label><input id="aiBatchNo" placeholder="e.g. B2026-001"></div>' +
+            '<div class="form-group"><label>Mfg Date</label><input id="aiMfgDate" type="date"></div>' +
+            '<div class="form-group"><label>Expiry Date</label><input id="aiExpDate" type="date"></div>' +
+            '<div class="form-group"><label>Model No.</label><input id="aiModelNo" placeholder="e.g. MX-500"></div>' : '') +
         '</div>' +
         '<div class="add-form-actions">' +
           '<button type="button" class="btn btn-ghost" onclick="window.goTo(\'items\')">Cancel</button>' +
@@ -1074,15 +1112,24 @@
       if (rate <= 0) { showToast('Rate is required', 'error'); return; }
       var btn = document.getElementById('aiSubmitBtn');
       btn.disabled = true; btn.textContent = 'Saving...';
-      api('POST', '/api/products', {
+      var body = {
         name: name,
         hsn: document.getElementById('aiHsn').value.trim(),
         rate: rate,
         mrp: parseFloat(document.getElementById('aiMrp').value) || 0,
         gst: parseInt(document.getElementById('aiGst').value) || 0,
         unit: document.getElementById('aiUnit').value,
-        size: document.getElementById('aiSize').value.trim()
-      }).then(function (res) {
+        size: document.getElementById('aiSize').value.trim(),
+        description: document.getElementById('aiDesc') ? document.getElementById('aiDesc').value.trim() : ''
+      };
+      if (document.getElementById('aiCategory')) body.category = document.getElementById('aiCategory').value;
+      if (document.getElementById('aiStockQty')) body.stock_quantity = parseFloat(document.getElementById('aiStockQty').value) || 0;
+      if (document.getElementById('aiLowStock')) body.low_stock_threshold = parseFloat(document.getElementById('aiLowStock').value) || 0;
+      if (document.getElementById('aiBatchNo')) body.batch_no = document.getElementById('aiBatchNo').value.trim();
+      if (document.getElementById('aiMfgDate')) body.mfg_date = document.getElementById('aiMfgDate').value || null;
+      if (document.getElementById('aiExpDate')) body.exp_date = document.getElementById('aiExpDate').value || null;
+      if (document.getElementById('aiModelNo')) body.model_no = document.getElementById('aiModelNo').value.trim();
+      api('POST', '/api/products', body).then(function (res) {
         if (res.error) { showToast(res.error, 'error'); btn.disabled = false; btn.textContent = 'Save Item'; return; }
         showToast(res.message || 'Item added!', 'success');
         window.goTo('items');
@@ -1098,6 +1145,7 @@
     api('GET', '/api/products/' + itemId).then(function (data) {
       if (data.error) { showToast(data.error, 'error'); window.goTo('items'); return; }
       var item = data.product;
+      var is = (currentUser && currentUser.item_settings) || {};
 
       var unitOptions = ['Pcs','Kg','Gm','Ltr','Mtr','Sq.Ft','Box','Bag','Dozen','Pair','Set','Roll','Ton','Quintal','Nos','Bundle','Other'];
       var unitOpts = unitOptions.map(function (u) {
@@ -1106,6 +1154,13 @@
       var gstOpts = GST_RATES.map(function (r) {
         return '<option value="' + r + '"' + ((item.gst || 0) === r ? ' selected' : '') + '>' + r + '%</option>';
       }).join('');
+      var catOpts = '';
+      if (is.category && is.categories && is.categories.length) {
+        catOpts = '<option value="">-- Select --</option>' + is.categories.map(function(c) {
+          return '<option value="' + esc(c) + '"' + ((item.category || '') === c ? ' selected' : '') + '>' + esc(c) + '</option>';
+        }).join('');
+      }
+      var fmtDate = function(d) { if (!d) return ''; try { return new Date(d).toISOString().split('T')[0]; } catch(e) { return ''; } };
 
       var html = '<div class="add-form-card">' +
         '<div class="add-form-header"><h3>Edit Item</h3>' +
@@ -1119,6 +1174,14 @@
             '<div class="form-group"><label>GST Rate</label><select id="aiGst">' + gstOpts + '</select></div>' +
             '<div class="form-group"><label>Unit</label><select id="aiUnit">' + unitOpts + '</select></div>' +
             '<div class="form-group"><label>Size</label><input id="aiSize" placeholder="e.g. L, XL, 500ml" value="' + esc(item.size || '') + '"></div>' +
+            '<div class="form-group full"><label>Description</label><textarea id="aiDesc" rows="2" placeholder="Optional item description">' + esc(item.description || '') + '</textarea></div>' +
+            (is.category ? '<div class="form-group"><label>Category</label><select id="aiCategory">' + catOpts + '</select></div>' : '') +
+            (is.stock ? '<div class="form-group"><label>Stock Quantity</label><input id="aiStockQty" type="number" step="0.01" min="0" value="' + (item.stock_quantity || 0) + '"></div>' +
+              '<div class="form-group"><label>Low Stock Alert</label><input id="aiLowStock" type="number" step="1" min="0" value="' + (item.low_stock_threshold || is.low_stock_threshold || 10) + '"></div>' : '') +
+            (is.batch_tracking ? '<div class="form-group"><label>Batch No.</label><input id="aiBatchNo" value="' + esc(item.batch_no || '') + '"></div>' +
+              '<div class="form-group"><label>Mfg Date</label><input id="aiMfgDate" type="date" value="' + fmtDate(item.mfg_date) + '"></div>' +
+              '<div class="form-group"><label>Expiry Date</label><input id="aiExpDate" type="date" value="' + fmtDate(item.exp_date) + '"></div>' +
+              '<div class="form-group"><label>Model No.</label><input id="aiModelNo" value="' + esc(item.model_no || '') + '"></div>' : '') +
           '</div>' +
           '<div class="add-form-actions">' +
             '<button type="button" class="btn btn-ghost" onclick="window.goTo(\'items\')">Cancel</button>' +
@@ -1135,15 +1198,24 @@
         if (rate <= 0) { showToast('Rate is required', 'error'); return; }
         var btn = document.getElementById('aiSubmitBtn');
         btn.disabled = true; btn.textContent = 'Saving...';
-        api('PUT', '/api/products/' + itemId, {
+        var body = {
           name: name,
           hsn: document.getElementById('aiHsn').value.trim(),
           rate: rate,
           mrp: parseFloat(document.getElementById('aiMrp').value) || 0,
           gst: parseInt(document.getElementById('aiGst').value) || 0,
           unit: document.getElementById('aiUnit').value,
-          size: document.getElementById('aiSize').value.trim()
-        }).then(function (res) {
+          size: document.getElementById('aiSize').value.trim(),
+          description: document.getElementById('aiDesc') ? document.getElementById('aiDesc').value.trim() : ''
+        };
+        if (document.getElementById('aiCategory')) body.category = document.getElementById('aiCategory').value;
+        if (document.getElementById('aiStockQty')) body.stock_quantity = parseFloat(document.getElementById('aiStockQty').value) || 0;
+        if (document.getElementById('aiLowStock')) body.low_stock_threshold = parseFloat(document.getElementById('aiLowStock').value) || 0;
+        if (document.getElementById('aiBatchNo')) body.batch_no = document.getElementById('aiBatchNo').value.trim();
+        if (document.getElementById('aiMfgDate')) body.mfg_date = document.getElementById('aiMfgDate').value || null;
+        if (document.getElementById('aiExpDate')) body.exp_date = document.getElementById('aiExpDate').value || null;
+        if (document.getElementById('aiModelNo')) body.model_no = document.getElementById('aiModelNo').value.trim();
+        api('PUT', '/api/products/' + itemId, body).then(function (res) {
           if (res.error) { showToast(res.error, 'error'); btn.disabled = false; btn.textContent = 'Update Item'; return; }
           showToast(res.message || 'Item updated!', 'success');
           window.goTo('items');
@@ -1554,6 +1626,8 @@
         if (p.gstin) document.getElementById('cGstin').value = p.gstin;
         if (p.address) document.getElementById('cAddress').value = p.address;
         if (p.state) document.getElementById('cState').value = p.state;
+        // Store selected party ID for party-wise item rates
+        window._selectedPartyId = p.id || p._id || null;
       }
     );
   }
@@ -1604,6 +1678,24 @@
         if (p.rate) row.querySelector('[data-f="rate"]').value = p.rate;
         if (p.gst !== undefined) row.querySelector('[data-f="gst"]').value = p.gst;
         if (p.unit) row.querySelector('[data-f="unit"]').value = p.unit;
+        // Store product id on the row for reference
+        row.setAttribute('data-product-id', p.id || p._id || '');
+        // Check party-wise rate if enabled
+        var isSettings = (currentUser && currentUser.item_settings) || {};
+        var partyId = window._selectedPartyId;
+        var productId = p.id || p._id;
+        if (isSettings.party_rate && partyId && productId) {
+          api('GET', '/api/party-rates/' + partyId + '/' + productId).then(function (res) {
+            if (res.found && res.rate !== null) {
+              row.querySelector('[data-f="rate"]').value = res.rate;
+              // Show indicator
+              var rateInput = row.querySelector('[data-f="rate"]');
+              rateInput.style.borderColor = 'var(--primary)';
+              rateInput.title = 'Party-specific rate applied';
+              recalculate();
+            }
+          }).catch(function () {});
+        }
         recalculate();
       }
     );
@@ -1901,6 +1993,43 @@
       '</div>' +
       '</div>' +
 
+      // ── Item Settings Card ──
+      (function() {
+        var is = (u.item_settings && typeof u.item_settings === 'object') ? u.item_settings : {};
+        var cats = is.categories || ['Electronics', 'Clothing', 'Food', 'Medicine', 'Other'];
+        return '<div class="form-card"><h3>Item Settings</h3>' +
+          '<p style="color:var(--text-muted);font-size:0.875rem;margin:0 0 16px">Enable or disable optional item features. These settings affect Add/Edit Item forms and item listings.</p>' +
+          '<div class="item-settings-toggles">' +
+            '<div class="setting-toggle-row">' +
+              '<div class="toggle-info"><strong>Stock Maintenance</strong><span>Track quantity in stock, get low stock alerts</span></div>' +
+              '<label class="toggle-switch"><input type="checkbox" id="isStock"' + (is.stock ? ' checked' : '') + '><span class="toggle-slider"></span></label>' +
+            '</div>' +
+            '<div class="setting-sub-row" id="stockThresholdRow" style="' + (is.stock ? '' : 'display:none') + '">' +
+              fg('Low Stock Alert Threshold', '<input type="number" id="isLowStockThreshold" value="' + (is.low_stock_threshold || 10) + '" min="0" step="1" placeholder="10">') +
+            '</div>' +
+            '<div class="setting-toggle-row">' +
+              '<div class="toggle-info"><strong>Item Category</strong><span>Group items by category for easy filtering</span></div>' +
+              '<label class="toggle-switch"><input type="checkbox" id="isCategory"' + (is.category ? ' checked' : '') + '><span class="toggle-slider"></span></label>' +
+            '</div>' +
+            '<div class="setting-sub-row" id="categoryListRow" style="' + (is.category ? '' : 'display:none') + '">' +
+              fg('Categories (comma-separated)', '<input type="text" id="isCategoryList" value="' + esc(cats.join(', ')) + '" placeholder="Electronics, Clothing, Food...">') +
+            '</div>' +
+            '<div class="setting-toggle-row">' +
+              '<div class="toggle-info"><strong>Batch Tracking</strong><span>Track batch no., manufacturing date, expiry date, model no.</span></div>' +
+              '<label class="toggle-switch"><input type="checkbox" id="isBatchTracking"' + (is.batch_tracking ? ' checked' : '') + '><span class="toggle-slider"></span></label>' +
+            '</div>' +
+            '<div class="setting-toggle-row">' +
+              '<div class="toggle-info"><strong>Party Wise Item Rate</strong><span>Set different prices for different customers</span></div>' +
+              '<label class="toggle-switch"><input type="checkbox" id="isPartyRate"' + (is.party_rate ? ' checked' : '') + '><span class="toggle-slider"></span></label>' +
+            '</div>' +
+            '<div class="setting-toggle-row">' +
+              '<div class="toggle-info"><strong>Custom Fields</strong><span>Add your own custom fields to items</span></div>' +
+              '<label class="toggle-switch"><input type="checkbox" id="isCustomFields"' + (is.custom_fields ? ' checked' : '') + '><span class="toggle-slider"></span></label>' +
+            '</div>' +
+          '</div>' +
+        '</div>';
+      })() +
+
       '<div class="form-card"><h3>Bank & Payment Details</h3>' +
       '<p style="color:var(--text-muted);font-size:0.875rem;margin:0 0 16px">Bank details shown on your invoices for customer payments.</p>' +
       '<div class="form-grid">' +
@@ -2101,6 +2230,20 @@
       });
     }
 
+    // Item settings toggle handlers
+    var isStockCb = document.getElementById('isStock');
+    var isCatCb = document.getElementById('isCategory');
+    if (isStockCb) {
+      isStockCb.addEventListener('change', function () {
+        document.getElementById('stockThresholdRow').style.display = this.checked ? '' : 'none';
+      });
+    }
+    if (isCatCb) {
+      isCatCb.addEventListener('change', function () {
+        document.getElementById('categoryListRow').style.display = this.checked ? '' : 'none';
+      });
+    }
+
     // Form submit
     document.getElementById('settingsForm').addEventListener('submit', function (e) {
       e.preventDefault();
@@ -2126,7 +2269,16 @@
           var ld = document.getElementById('logoData').value;
           if (ld === '__REMOVE__') return '';
           return ld || (currentUser ? currentUser.logo : '') || '';
-        })()
+        })(),
+        item_settings: {
+          stock: document.getElementById('isStock') ? document.getElementById('isStock').checked : false,
+          category: document.getElementById('isCategory') ? document.getElementById('isCategory').checked : false,
+          batch_tracking: document.getElementById('isBatchTracking') ? document.getElementById('isBatchTracking').checked : false,
+          party_rate: document.getElementById('isPartyRate') ? document.getElementById('isPartyRate').checked : false,
+          custom_fields: document.getElementById('isCustomFields') ? document.getElementById('isCustomFields').checked : false,
+          low_stock_threshold: parseInt(document.getElementById('isLowStockThreshold') ? document.getElementById('isLowStockThreshold').value : '10') || 10,
+          categories: (document.getElementById('isCategoryList') ? document.getElementById('isCategoryList').value : 'Electronics, Clothing, Food, Medicine, Other').split(',').map(function(c) { return c.trim(); }).filter(Boolean)
+        }
       };
       var submitBtn = e.target.querySelector('button[type="submit"]');
       if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Saving...'; }

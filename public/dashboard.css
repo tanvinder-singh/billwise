@@ -294,6 +294,41 @@ tr:hover td { background:rgba(241,245,249,0.5); }
 .card-actions button.edit-btn:hover { border-color:var(--primary); color:var(--primary); background:#ccfbf1; }
 .card-actions button.del:hover { border-color:#dc2626; color:#dc2626; background:#fee2e2; }
 
+/* ── Item Settings Toggles ── */
+.item-settings-toggles { display:flex; flex-direction:column; gap:0; }
+.setting-toggle-row {
+  display:flex; align-items:center; justify-content:space-between; gap:16px;
+  padding:14px 0; border-bottom:1px solid var(--border);
+}
+.setting-toggle-row:last-child { border-bottom:none; }
+.toggle-info { display:flex; flex-direction:column; gap:2px; }
+.toggle-info strong { font-size:0.9rem; color:var(--text); }
+.toggle-info span { font-size:0.8125rem; color:var(--text-muted); }
+.toggle-switch { position:relative; display:inline-block; width:44px; height:24px; flex-shrink:0; }
+.toggle-switch input { opacity:0; width:0; height:0; }
+.toggle-slider {
+  position:absolute; cursor:pointer; top:0; left:0; right:0; bottom:0;
+  background:#cbd5e1; border-radius:24px; transition:0.25s;
+}
+.toggle-slider::before {
+  content:''; position:absolute; height:18px; width:18px; left:3px; bottom:3px;
+  background:#fff; border-radius:50%; transition:0.25s; box-shadow:0 1px 3px rgb(0 0 0/0.15);
+}
+.toggle-switch input:checked + .toggle-slider { background:var(--primary); }
+.toggle-switch input:checked + .toggle-slider::before { transform:translateX(20px); }
+.setting-sub-row { padding:4px 0 14px 0; border-bottom:1px solid var(--border); }
+.setting-sub-row .form-group { margin-bottom:0; max-width:400px; }
+
+/* ── Stock / Category badges on item cards ── */
+.item-badge { display:inline-block; font-size:0.7rem; font-weight:600; padding:2px 8px; border-radius:20px; margin-right:6px; }
+.badge-category { background:#e0e7ff; color:#4338ca; }
+.badge-stock { background:#dcfce7; color:#16a34a; }
+.badge-stock.low { background:#fef9c3; color:#ca8a04; }
+.badge-stock.out { background:#fee2e2; color:#dc2626; }
+.badge-batch { background:#f0f9ff; color:#0369a1; }
+.badge-expiry { background:#fef3c7; color:#92400e; }
+.badge-expiry.expired { background:#fee2e2; color:#dc2626; }
+
 /* ============================================
    Add Party / Add Item Form
    ============================================ */

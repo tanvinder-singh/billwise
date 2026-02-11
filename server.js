@@ -245,7 +245,7 @@ app.get('/api/auth/me', auth, async (req, res) => {
 app.put('/api/auth/profile', auth, async (req, res) => {
   const { name, business_name, gstin, address, city, state, pincode, bank_name, account_no,
           ifsc_code, account_holder, terms_conditions, upi_id, upi_qr, signature,
-          invoice_theme, gstin_api_key, logo } = req.body;
+          invoice_theme, gstin_api_key, logo, item_settings } = req.body;
   const setData = {
     name: name || '', business_name: business_name || '', gstin: gstin || '',
     address: address || '', city: city || '', state: state || '', pincode: pincode || '',
@@ -256,6 +256,7 @@ app.put('/api/auth/profile', auth, async (req, res) => {
   };
   if (invoice_theme !== undefined) setData.invoice_theme = invoice_theme;
   if (gstin_api_key !== undefined) setData.gstin_api_key = gstin_api_key;
+  if (item_settings !== undefined) setData.item_settings = item_settings;
   await users.update({ id: req.user.id }, { $set: setData });
   const user = await users.findOne({ id: req.user.id });
   res.json({ user: safeUser(user), message: 'Profile updated' });
@@ -451,15 +452,24 @@ app.post('/api/parties', auth, async (req, res) => {
 // Create a product
 app.post('/api/products', auth, async (req, res) => {
   try {
-    const { name, hsn, size, mrp, rate, gst, unit } = req.body;
+    const { name, hsn, size, mrp, rate, gst, unit, category, description,
+            stock_quantity, low_stock_threshold, batch_no, mfg_date, exp_date,
+            model_no, custom_fields } = req.body;
     if (!name) return res.status(400).json({ error: 'Item name is required' });
     const existing = await products.findOne({ user_id: req.user.id, name });
     if (existing) return res.status(409).json({ error: 'Item with this name already exists' });
-    const product = await products.insert({
+    const insertData = {
       user_id: req.user.id, name, hsn: hsn || '', size: size || '', mrp: mrp || 0,
       rate: rate || 0, gst: gst != null ? gst : 0, unit: unit || 'Pcs',
+      category: category || '', description: description || '',
+      stock_quantity: stock_quantity || 0, low_stock_threshold: low_stock_threshold || 0,
+      batch_no: batch_no || '', model_no: model_no || '',
+      custom_fields: custom_fields || {},
       updated_at: new Date()
-    });
+    };
+    if (mfg_date) insertData.mfg_date = mfg_date;
+    if (exp_date) insertData.exp_date = exp_date;
+    const product = await products.insert(insertData);
     res.json({ product, message: 'Item added!' });
   } catch (e) {
     console.error(e);
@@ -499,12 +509,21 @@ app.delete('/api/parties/:id', auth, async (req, res) => {
 // Update a product
 app.put('/api/products/:id', auth, async (req, res) => {
   try {
-    const { name, hsn, size, mrp, rate, gst, unit } = req.body;
-    await products.update({ id: req.params.id, user_id: req.user.id }, {
-      $set: { name: name || '', hsn: hsn || '', size: size || '', mrp: mrp || 0,
-        rate: rate || 0, gst: gst != null ? gst : 0, unit: unit || 'Pcs',
-        updated_at: new Date() }
-    });
+    const { name, hsn, size, mrp, rate, gst, unit, category, description,
+            stock_quantity, low_stock_threshold, batch_no, mfg_date, exp_date,
+            model_no, custom_fields } = req.body;
+    const setData = {
+      name: name || '', hsn: hsn || '', size: size || '', mrp: mrp || 0,
+      rate: rate || 0, gst: gst != null ? gst : 0, unit: unit || 'Pcs',
+      category: category || '', description: description || '',
+      stock_quantity: stock_quantity || 0, low_stock_threshold: low_stock_threshold || 0,
+      batch_no: batch_no || '', model_no: model_no || '',
+      custom_fields: custom_fields || {},
+      updated_at: new Date()
+    };
+    if (mfg_date !== undefined) setData.mfg_date = mfg_date || null;
+    if (exp_date !== undefined) setData.exp_date = exp_date || null;
+    await products.update({ id: req.params.id, user_id: req.user.id }, { $set: setData });
     const product = await products.findOne({ id: req.params.id });
     res.json({ product, message: 'Product updated' });
   } catch (e) {
@@ -518,6 +537,72 @@ app.delete('/api/products/:id', auth, async (req, res) => {
   const removed = await products.remove({ id: req.params.id, user_id: req.user.id });
   if (removed === 0) return res.status(404).json({ error: 'Product not found' });
   res.json({ message: 'Product deleted' });
+});
+
+// ─── PARTY-WISE ITEM RATES ───────────────────────────────────
+
+// Get all custom rates for a party
+app.get('/api/party-rates/:party_id', auth, async (req, res) => {
+  try {
+    const { pool } = require('./database');
+    const result = await pool.query(
+      'SELECT pr.*, p.name as product_name FROM party_item_rates pr LEFT JOIN products p ON pr.product_id = p.id WHERE pr.user_id = $1 AND pr.party_id = $2 ORDER BY p.name',
+      [req.user.id, req.params.party_id]
+    );
+    res.json({ rates: result.rows.map(r => { r._id = r.id; r.rate = parseFloat(r.rate); return r; }) });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Failed to fetch party rates' });
+  }
+});
+
+// Set/update a party-item rate
+app.put('/api/party-rates', auth, async (req, res) => {
+  try {
+    const { party_id, product_id, rate } = req.body;
+    if (!party_id || !product_id || rate === undefined) return res.status(400).json({ error: 'party_id, product_id, and rate are required' });
+    const { pool } = require('./database');
+    await pool.query(
+      `INSERT INTO party_item_rates (user_id, party_id, product_id, rate) VALUES ($1, $2, $3, $4)
+       ON CONFLICT (user_id, party_id, product_id) DO UPDATE SET rate = $4, updated_at = NOW()`,
+      [req.user.id, party_id, product_id, rate]
+    );
+    res.json({ message: 'Party rate saved' });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Failed to save party rate' });
+  }
+});
+
+// Delete a party-item rate
+app.delete('/api/party-rates/:id', auth, async (req, res) => {
+  try {
+    const { pool } = require('./database');
+    await pool.query('DELETE FROM party_item_rates WHERE id = $1 AND user_id = $2', [req.params.id, req.user.id]);
+    res.json({ message: 'Party rate deleted' });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Failed to delete party rate' });
+  }
+});
+
+// Get rate for a specific party + product combo (used in invoice form)
+app.get('/api/party-rates/:party_id/:product_id', auth, async (req, res) => {
+  try {
+    const { pool } = require('./database');
+    const result = await pool.query(
+      'SELECT rate FROM party_item_rates WHERE user_id = $1 AND party_id = $2 AND product_id = $3',
+      [req.user.id, req.params.party_id, req.params.product_id]
+    );
+    if (result.rows.length) {
+      res.json({ rate: parseFloat(result.rows[0].rate), found: true });
+    } else {
+      res.json({ rate: null, found: false });
+    }
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Failed to fetch party rate' });
+  }
 });
 
 // ─── INVOICE ROUTES ──────────────────────────────────────────

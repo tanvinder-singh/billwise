@@ -39,6 +39,7 @@ async function initDB() {
       );
       ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(20) DEFAULT 'user';
       ALTER TABLE users ADD COLUMN IF NOT EXISTS logo TEXT DEFAULT '';
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS item_settings JSONB DEFAULT '{}';
 
       CREATE TABLE IF NOT EXISTS invoices (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -117,6 +118,28 @@ async function initDB() {
       );
       CREATE INDEX IF NOT EXISTS idx_products_user ON products(user_id);
       CREATE UNIQUE INDEX IF NOT EXISTS idx_products_user_name ON products(user_id, name);
+
+      -- Item settings: new product columns
+      ALTER TABLE products ADD COLUMN IF NOT EXISTS category VARCHAR(100) DEFAULT '';
+      ALTER TABLE products ADD COLUMN IF NOT EXISTS description TEXT DEFAULT '';
+      ALTER TABLE products ADD COLUMN IF NOT EXISTS stock_quantity NUMERIC(12,2) DEFAULT 0;
+      ALTER TABLE products ADD COLUMN IF NOT EXISTS low_stock_threshold NUMERIC(12,2) DEFAULT 0;
+      ALTER TABLE products ADD COLUMN IF NOT EXISTS batch_no VARCHAR(100) DEFAULT '';
+      ALTER TABLE products ADD COLUMN IF NOT EXISTS mfg_date DATE;
+      ALTER TABLE products ADD COLUMN IF NOT EXISTS exp_date DATE;
+      ALTER TABLE products ADD COLUMN IF NOT EXISTS model_no VARCHAR(100) DEFAULT '';
+      ALTER TABLE products ADD COLUMN IF NOT EXISTS custom_fields JSONB DEFAULT '{}';
+
+      -- Party-wise item rates
+      CREATE TABLE IF NOT EXISTS party_item_rates (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        party_id UUID NOT NULL REFERENCES parties(id) ON DELETE CASCADE,
+        product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+        rate NUMERIC(12,2) NOT NULL,
+        updated_at TIMESTAMP DEFAULT NOW()
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_party_item_rates_unique ON party_item_rates(user_id, party_id, product_id);
     `);
     console.log('  [DB] PostgreSQL tables initialized');
   } finally {
@@ -140,8 +163,14 @@ function norm(row) {
   }
   // Convert numeric columns from string to number
   ['subtotal','cgst','sgst','igst','round_off','total_mrp','discount','total','amount_paid',
-   'opening_balance','credit_limit','mrp','rate','gst'].forEach(k => {
+   'opening_balance','credit_limit','mrp','rate','gst','stock_quantity','low_stock_threshold'].forEach(k => {
     if (r[k] !== undefined && r[k] !== null) r[k] = parseFloat(r[k]);
+  });
+  // Parse JSONB fields
+  ['item_settings','custom_fields'].forEach(k => {
+    if (typeof r[k] === 'string') {
+      try { r[k] = JSON.parse(r[k]); } catch(e) {}
+    }
   });
   return r;
 }
