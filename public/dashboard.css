@@ -97,7 +97,7 @@ body { margin:0; font-family:'DM Sans',system-ui,sans-serif; font-size:15px; lin
   flex:1; border:none; background:transparent; font-family:inherit; font-size:0.875rem;
   color:var(--text); outline:none;
 }
-.topbar-action { white-space:nowrap; }
+.topbar-action { white-space:nowrap; margin-left:auto; }
 .topbar-user { display:flex; align-items:center; gap:10px; }
 .user-avatar {
   width:34px; height:34px; border-radius:50%;
