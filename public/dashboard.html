@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="dashboard.css?v=23" />
+  <link rel="stylesheet" href="dashboard.css?v=24" />
 </head>
 <body>
   <div class="app">
@@ -73,18 +73,30 @@
             <svg class="nav-group-arrow" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
           </button>
           <div class="nav-group-items" id="purchaseGroupItems">
-            <button type="button" class="nav-item nav-sub-item" data-page="purchase-bills" onclick="window.goTo('purchase-bills')">
-              <span>Purchase Bills</span>
-            </button>
-            <button type="button" class="nav-item nav-sub-item" data-page="payments-out" onclick="window.goTo('payments-out')">
-              <span>Payment-Out</span>
-            </button>
-            <button type="button" class="nav-item nav-sub-item" data-page="expenses-list" onclick="window.goTo('expenses-list')">
-              <span>Expenses</span>
-            </button>
-            <button type="button" class="nav-item nav-sub-item" data-page="purchase-orders" onclick="window.goTo('purchase-orders')">
-              <span>Purchase Order</span>
-            </button>
+            <div class="nav-sub-row">
+              <button type="button" class="nav-item nav-sub-item" data-page="purchase-bills" onclick="window.goTo('purchase-bills')">
+                <span>Purchase Bills</span>
+              </button>
+              <button type="button" class="nav-sub-add" title="Add Purchase Bill" onclick="event.stopPropagation();window.goTo('new-purchase-bill')">+</button>
+            </div>
+            <div class="nav-sub-row">
+              <button type="button" class="nav-item nav-sub-item" data-page="payments-out" onclick="window.goTo('payments-out')">
+                <span>Payment-Out</span>
+              </button>
+              <button type="button" class="nav-sub-add" title="Add Payment-Out" onclick="event.stopPropagation();window.goTo('new-payment-out')">+</button>
+            </div>
+            <div class="nav-sub-row">
+              <button type="button" class="nav-item nav-sub-item" data-page="expenses-list" onclick="window.goTo('expenses-list')">
+                <span>Expenses</span>
+              </button>
+              <button type="button" class="nav-sub-add" title="Add Expense" onclick="event.stopPropagation();window.goTo('new-expense')">+</button>
+            </div>
+            <div class="nav-sub-row">
+              <button type="button" class="nav-item nav-sub-item" data-page="purchase-orders" onclick="window.goTo('purchase-orders')">
+                <span>Purchase Order</span>
+              </button>
+              <button type="button" class="nav-sub-add" title="Add Purchase Order" onclick="event.stopPropagation();window.goTo('new-purchase-order')">+</button>
+            </div>
             <button type="button" class="nav-item nav-sub-item" data-page="purchase-returns" onclick="window.goTo('purchase-returns')">
               <span>Purchase Return / Dr. Note</span>
             </button>
@@ -132,6 +144,6 @@
   </div>
   <div class="toast" id="toast"></div>
   <div class="overlay" id="overlay"></div>
-  <script src="dashboard.js?v=22"></script>
+  <script src="dashboard.js?v=23"></script>
 </body>
 </html>

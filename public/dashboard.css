@@ -97,6 +97,17 @@ body { margin:0; font-family:'DM Sans',system-ui,sans-serif; font-size:15px; lin
   padding:8px 12px 8px 44px !important; font-size:0.8625rem !important;
   gap:8px !important;
 }
+.nav-sub-row {
+  display:flex; align-items:center;
+}
+.nav-sub-row .nav-sub-item { flex:1; }
+.nav-sub-add {
+  width:24px; height:24px; display:flex; align-items:center; justify-content:center;
+  border:none; background:rgba(13,148,136,0.15); color:var(--primary);
+  border-radius:50%; font-size:14px; font-weight:700; cursor:pointer;
+  margin-right:10px; transition:all 0.15s; flex-shrink:0;
+}
+.nav-sub-add:hover { background:var(--primary); color:#fff; }
 
 /* Main */
 .main { flex:1; margin-left:240px; display:flex; flex-direction:column; min-height:100vh; }
@@ -401,6 +412,52 @@ tr:hover td { background:rgba(241,245,249,0.5); }
 }
 .bill-select-card:hover { border-color:var(--primary); background:rgba(13,148,136,0.03); }
 .bill-select-card.selected { border-color:var(--primary); background:rgba(13,148,136,0.06); box-shadow:0 0 0 2px rgba(13,148,136,0.15); }
+
+/* ─── Page Filter Bar ────────────────────── */
+.page-filter-bar {
+  display:flex; align-items:center; gap:12px; flex-wrap:wrap;
+  padding:12px 18px; background:var(--surface); border:1px solid var(--border);
+  border-radius:var(--radius-sm); margin-bottom:18px;
+}
+.page-filter-bar label { font-size:0.8rem; font-weight:600; color:var(--text-muted); white-space:nowrap; }
+.page-filter-bar select,
+.page-filter-bar input[type="date"] {
+  padding:5px 10px; border:1px solid var(--border); border-radius:var(--radius-sm);
+  font-size:0.8rem; background:var(--bg); color:var(--text);
+}
+.page-filter-bar .filter-sep { width:1px; height:24px; background:var(--border); }
+
+/* ─── Summary Card (Vyapar-style) ────────── */
+.summary-card-row {
+  display:flex; gap:16px; margin-bottom:20px; flex-wrap:wrap;
+}
+.summary-card-box {
+  background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-sm);
+  padding:18px 22px; min-width:200px; flex:1;
+}
+.summary-card-box .sc-label { font-size:0.8rem; color:var(--text-muted); margin-bottom:2px; }
+.summary-card-box .sc-value { font-size:1.5rem; font-weight:700; color:var(--text); }
+.summary-card-box .sc-sub { font-size:0.8rem; color:var(--text-muted); margin-top:4px; }
+
+/* ─── Empty state (centered) ─────────────── */
+.pe-empty-state {
+  text-align:center; padding:60px 20px;
+}
+.pe-empty-state svg { margin-bottom:16px; }
+.pe-empty-state h3 { color:var(--text-secondary); margin-bottom:6px; font-size:1.1rem; }
+.pe-empty-state p { color:var(--text-muted); margin-bottom:18px; font-size:0.9rem; }
+
+/* Page header with action button */
+.pe-page-header {
+  display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;
+}
+.pe-page-header h2 { margin:0; font-size:1.2rem; font-weight:700; }
+.btn-add-primary {
+  background:#dc2626; color:#fff; border:none; padding:8px 18px; border-radius:var(--radius-sm);
+  font-weight:600; font-size:0.85rem; cursor:pointer; display:flex; align-items:center; gap:6px;
+  transition:background 0.15s;
+}
+.btn-add-primary:hover { background:#b91c1c; }
 
 /* ============================================
    Add Party / Add Item Form

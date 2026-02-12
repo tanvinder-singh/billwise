@@ -2710,32 +2710,95 @@
     $content.innerHTML = '<p class="loading">Loading...</p>';
     api('GET', '/api/purchase-docs?type=' + docType).then(function (res) {
       var docs = res.documents || [];
-      if (!docs.length) {
-        $content.innerHTML = '<div style="text-align:center;padding:60px 20px">' +
-          '<svg width="64" height="64" fill="none" stroke="var(--text-muted)" stroke-width="1.5" viewBox="0 0 24 24" style="margin-bottom:16px"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 01-8 0"/></svg>' +
-          '<h3 style="color:var(--text-muted)">No ' + meta.title + '</h3>' +
-          '<p style="color:var(--text-muted)">You haven\'t added any yet.</p>' +
-          '<button class="btn btn-primary" onclick="window.goTo(\'' + meta.newPage + '\')">+ Add ' + meta.singular + '</button></div>';
-        return;
-      }
-      var html = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">' +
-        '<h2 style="margin:0;font-size:1.1rem">' + meta.title + ' (' + docs.length + ')</h2>' +
-        '<button class="btn btn-primary btn-sm" onclick="window.goTo(\'' + meta.newPage + '\')">+ Add ' + meta.singular + '</button></div>';
-      // Summary card
+      var now = new Date();
+      var firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+      var lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+      var fmtD = function(d){ return String(d.getDate()).padStart(2,'0') + '/' + String(d.getMonth()+1).padStart(2,'0') + '/' + d.getFullYear(); };
+      var thisMonth = docs.filter(function(d) { var dt = new Date(d.doc_date); return dt >= firstDay && dt <= lastDay; });
       var totalAmt = 0, paidAmt = 0;
-      docs.forEach(function(d) { totalAmt += (d.total || 0); paidAmt += (d.amount_paid || 0); });
-      html += '<div class="stats-grid" style="margin-bottom:20px"><div class="stat-card">' +
-        '<div class="stat-label">Total Amount</div><div class="stat-value">' + formatINR(totalAmt) + '</div>' +
-        '</div><div class="stat-card"><div class="stat-label">Paid</div><div class="stat-value">' + formatINR(paidAmt) + '</div></div></div>';
-      html += '<div class="invoice-list">';
-      docs.forEach(function (d) {
-        html += '<div class="invoice-card" onclick="window.goTo(\'' + meta.viewPage + '\',\'' + d.id + '\')" style="cursor:pointer">' +
-          '<div class="inv-row"><strong>' + esc(d.doc_number) + '</strong> ' + purchaseStatusBadge(d.status) +
-          '<span class="inv-total">' + formatINR(d.total) + '</span></div>' +
-          '<div class="inv-row"><span>' + esc(d.supplier_name || 'No supplier') + '</span><span style="color:var(--text-muted);font-size:0.85rem">' + formatDate(d.doc_date) + '</span></div></div>';
-      });
-      html += '</div>';
+      thisMonth.forEach(function(d) { totalAmt += (d.total || 0); paidAmt += (d.amount_paid || 0); });
+
+      // Header
+      var html = '<div class="pe-page-header">' +
+        '<h2>' + meta.title + '</h2>' +
+        '<button class="btn-add-primary" onclick="window.goTo(\'' + meta.newPage + '\')">+ Add ' + meta.singular + '</button></div>';
+
+      // Filter bar
+      html += '<div class="page-filter-bar">' +
+        '<label>Filter by :</label>' +
+        '<select id="pdFilterPeriod">' +
+        '<option value="this_month" selected>This Month</option><option value="last_month">Last Month</option>' +
+        '<option value="this_quarter">This Quarter</option><option value="this_year">This Year</option><option value="all">All Time</option></select>' +
+        '<div class="filter-sep"></div>' +
+        '<span style="font-size:0.8rem;color:var(--text-muted)">' + fmtD(firstDay) + '  To  ' + fmtD(lastDay) + '</span></div>';
+
+      // Summary
+      html += '<div class="summary-card-row">' +
+        '<div class="summary-card-box"><div class="sc-label">Total Amount</div><div class="sc-value">' + formatINR(totalAmt) + '</div>' +
+        '<div class="sc-sub">Paid: ' + formatINR(paidAmt) + '</div></div></div>';
+
+      if (!thisMonth.length) {
+        html += '<div class="pe-empty-state">' +
+          '<svg width="80" height="80" fill="none" stroke="var(--text-muted)" stroke-width="1" viewBox="0 0 24 24"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 01-8 0"/></svg>' +
+          '<h3>No ' + meta.title + '</h3><p>You haven\'t added any yet.</p>' +
+          '<button class="btn-add-primary" onclick="window.goTo(\'' + meta.newPage + '\')">+ Add ' + meta.singular + '</button></div>';
+      } else {
+        html += '<div class="invoice-list" id="pdListCards">';
+        thisMonth.forEach(function (d) {
+          html += '<div class="invoice-card" onclick="window.goTo(\'' + meta.viewPage + '\',\'' + d.id + '\')" style="cursor:pointer">' +
+            '<div class="inv-row"><strong>' + esc(d.doc_number) + '</strong> ' + purchaseStatusBadge(d.status) +
+            '<span class="inv-total">' + formatINR(d.total) + '</span></div>' +
+            '<div class="inv-row"><span>' + esc(d.supplier_name || 'No supplier') + '</span><span style="color:var(--text-muted);font-size:0.85rem">' + formatDate(d.doc_date) + '</span></div></div>';
+        });
+        html += '</div>';
+      }
       $content.innerHTML = html;
+      // Attach filter
+      var sel = document.getElementById('pdFilterPeriod');
+      if (sel) {
+        sel.addEventListener('change', function () {
+          var val = sel.value;
+          var now2 = new Date(), startD, endD;
+          if (val === 'this_month') { startD = new Date(now2.getFullYear(), now2.getMonth(), 1); endD = new Date(now2.getFullYear(), now2.getMonth()+1, 0); }
+          else if (val === 'last_month') { startD = new Date(now2.getFullYear(), now2.getMonth()-1, 1); endD = new Date(now2.getFullYear(), now2.getMonth(), 0); }
+          else if (val === 'this_quarter') { var q = Math.floor(now2.getMonth()/3)*3; startD = new Date(now2.getFullYear(), q, 1); endD = new Date(now2.getFullYear(), q+3, 0); }
+          else if (val === 'this_year') { startD = new Date(now2.getFullYear(), 0, 1); endD = new Date(now2.getFullYear(), 11, 31); }
+          else { startD = new Date(2000,0,1); endD = new Date(2099,11,31); }
+          var filtered = docs.filter(function(d) { var dt = new Date(d.doc_date); return dt >= startD && dt <= endD; });
+          var tAmt = 0, pAmt = 0;
+          filtered.forEach(function(d) { tAmt += (d.total || 0); pAmt += (d.amount_paid || 0); });
+          var summaryBox = document.querySelector('.summary-card-box');
+          if (summaryBox) { summaryBox.querySelector('.sc-value').textContent = formatINR(tAmt); summaryBox.querySelector('.sc-sub').textContent = 'Paid: ' + formatINR(pAmt); }
+          var spanEl = sel.parentElement.querySelector('span');
+          var fmtD2 = function(d2){ return String(d2.getDate()).padStart(2,'0') + '/' + String(d2.getMonth()+1).padStart(2,'0') + '/' + d2.getFullYear(); };
+          if (spanEl && val !== 'all') spanEl.textContent = fmtD2(startD) + '  To  ' + fmtD2(endD);
+          else if (spanEl) spanEl.textContent = 'All Time';
+          var listEl = document.getElementById('pdListCards');
+          var emptyEl = document.querySelector('.pe-empty-state');
+          if (!filtered.length) {
+            if (listEl) listEl.innerHTML = '';
+            if (!emptyEl) {
+              var emptyDiv = document.createElement('div');
+              emptyDiv.className = 'pe-empty-state';
+              emptyDiv.innerHTML = '<svg width="80" height="80" fill="none" stroke="var(--text-muted)" stroke-width="1" viewBox="0 0 24 24"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 01-8 0"/></svg>' +
+                '<h3>No ' + meta.title + '</h3><p>No transactions in this period.</p>' +
+                '<button class="btn-add-primary" onclick="window.goTo(\'' + meta.newPage + '\')">+ Add ' + meta.singular + '</button>';
+              $content.appendChild(emptyDiv);
+            }
+          } else {
+            if (emptyEl) emptyEl.remove();
+            if (!listEl) { listEl = document.createElement('div'); listEl.className = 'invoice-list'; listEl.id = 'pdListCards'; $content.appendChild(listEl); }
+            var cHtml = '';
+            filtered.forEach(function (d) {
+              cHtml += '<div class="invoice-card" onclick="window.goTo(\'' + meta.viewPage + '\',\'' + d.id + '\')" style="cursor:pointer">' +
+                '<div class="inv-row"><strong>' + esc(d.doc_number) + '</strong> ' + purchaseStatusBadge(d.status) +
+                '<span class="inv-total">' + formatINR(d.total) + '</span></div>' +
+                '<div class="inv-row"><span>' + esc(d.supplier_name || 'No supplier') + '</span><span style="color:var(--text-muted);font-size:0.85rem">' + formatDate(d.doc_date) + '</span></div></div>';
+            });
+            listEl.innerHTML = cHtml;
+          }
+        });
+      }
     }).catch(function () { $content.innerHTML = '<p class="text-danger">Failed to load ' + meta.title + '</p>'; });
   }
 
@@ -2974,39 +3037,128 @@
     $content.innerHTML = '<p class="loading">Loading...</p>';
     api('GET', '/api/payments-out').then(function (res) {
       var list = res.payments || [];
-      // Summary
-      var totalAmt = 0, paidAmt = 0;
-      list.forEach(function (p) { totalAmt += (p.amount || 0); });
+      var now = new Date();
+      var firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+      var lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+      var fmtD = function(d){ return String(d.getDate()).padStart(2,'0') + '/' + String(d.getMonth()+1).padStart(2,'0') + '/' + d.getFullYear(); };
+      // Filter this month
+      var thisMonth = list.filter(function(p) {
+        var pd = new Date(p.payment_date);
+        return pd >= firstDay && pd <= lastDay;
+      });
+      var totalAmt = 0;
+      thisMonth.forEach(function (p) { totalAmt += (p.amount || 0); });
 
-      var html = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">' +
-        '<h2 style="margin:0;font-size:1.1rem">Payment-Out</h2>' +
-        '<button class="btn btn-primary btn-sm" onclick="window.goTo(\'new-payment-out\')">+ Add Payment-Out</button></div>';
-      html += '<div class="stats-grid" style="margin-bottom:20px"><div class="stat-card">' +
-        '<div class="stat-label">Total Amount</div><div class="stat-value">' + formatINR(totalAmt) + '</div></div>' +
-        '<div class="stat-card"><div class="stat-label">Paid</div><div class="stat-value">' + formatINR(totalAmt) + '</div></div></div>';
+      // Page header
+      var html = '<div class="pe-page-header">' +
+        '<h2>Payment-Out</h2>' +
+        '<button class="btn-add-primary" onclick="window.goTo(\'new-payment-out\')">+ Add Payment-Out</button></div>';
 
-      if (!list.length) {
-        html += '<div style="text-align:center;padding:40px 20px">' +
-          '<svg width="64" height="64" fill="none" stroke="var(--text-muted)" stroke-width="1.5" viewBox="0 0 24 24" style="margin-bottom:16px"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>' +
-          '<h3 style="color:var(--text-muted)">No Transactions to show</h3>' +
-          '<p style="color:var(--text-muted)">You haven\'t added any transactions yet.</p>' +
-          '<button class="btn btn-primary" onclick="window.goTo(\'new-payment-out\')">+ Add Payment-Out</button></div>';
+      // Filter bar
+      html += '<div class="page-filter-bar">' +
+        '<label>Filter by :</label>' +
+        '<select id="poFilterPeriod" class="po-filter-period">' +
+        '<option value="this_month" selected>This Month</option><option value="last_month">Last Month</option>' +
+        '<option value="this_quarter">This Quarter</option><option value="this_year">This Year</option><option value="all">All Time</option></select>' +
+        '<div class="filter-sep"></div>' +
+        '<span style="font-size:0.8rem;color:var(--text-muted)">' + fmtD(firstDay) + '  To  ' + fmtD(lastDay) + '</span>' +
+        '</div>';
+
+      // Summary card
+      html += '<div class="summary-card-row">' +
+        '<div class="summary-card-box">' +
+        '<div class="sc-label">Total Amount</div>' +
+        '<div class="sc-value">' + formatINR(totalAmt) + '</div>' +
+        '<div class="sc-sub">Paid: ' + formatINR(totalAmt) + '</div>' +
+        '</div></div>';
+
+      if (!thisMonth.length) {
+        html += '<div class="pe-empty-state">' +
+          '<svg width="80" height="80" fill="none" stroke="var(--text-muted)" stroke-width="1" viewBox="0 0 24 24"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/><path d="M9 14l2 2 4-4"/></svg>' +
+          '<h3>No Transactions to show</h3>' +
+          '<p>You haven\'t added any transactions yet.</p>' +
+          '<button class="btn-add-primary" onclick="window.goTo(\'new-payment-out\')">+ Add Payment-Out</button></div>';
         $content.innerHTML = html;
+        poAttachFilter(list);
         return;
       }
-      html += '<div class="invoice-list">';
-      list.forEach(function (p) {
-        html += '<div class="payment-card">' +
-          '<div class="inv-row"><strong>' + esc(p.payment_number) + '</strong>' +
-          '<span class="payment-mode-badge">' + esc(p.payment_mode || 'cash') + '</span>' +
-          '<span class="payment-amount">' + formatINR(p.amount) + '</span></div>' +
-          '<div class="inv-row"><span>' + esc(p.party_name || 'Unknown') + '</span>' +
-          '<span style="color:var(--text-muted);font-size:0.85rem">' + formatDate(p.payment_date) + '</span></div>' +
-          '<div style="text-align:right;margin-top:4px"><button class="btn btn-sm btn-danger" onclick="event.stopPropagation();deletePaymentOut(\'' + p.id + '\')">Delete</button></div></div>';
+      html += '<div class="invoice-list" id="poListCards">';
+      thisMonth.forEach(function (p) {
+        html += renderPaymentOutCard(p);
       });
       html += '</div>';
       $content.innerHTML = html;
+      poAttachFilter(list);
     }).catch(function () { $content.innerHTML = '<p class="text-danger">Failed to load payments</p>'; });
+  }
+
+  function renderPaymentOutCard(p) {
+    return '<div class="payment-card">' +
+      '<div class="inv-row"><strong>' + esc(p.payment_number) + '</strong>' +
+      '<span class="payment-mode-badge">' + esc(p.payment_mode || 'cash') + '</span>' +
+      '<span class="payment-amount">' + formatINR(p.amount) + '</span></div>' +
+      '<div class="inv-row"><span>' + esc(p.party_name || 'Unknown') + '</span>' +
+      '<span style="color:var(--text-muted);font-size:0.85rem">' + formatDate(p.payment_date) + '</span></div>' +
+      '<div style="text-align:right;margin-top:4px"><button class="btn btn-sm btn-danger" onclick="event.stopPropagation();deletePaymentOut(\'' + p.id + '\')">Delete</button></div></div>';
+  }
+
+  function poAttachFilter(allPayments) {
+    var sel = document.getElementById('poFilterPeriod');
+    if (!sel) return;
+    sel.addEventListener('change', function () {
+      var val = sel.value;
+      var now = new Date();
+      var startD, endD;
+      if (val === 'this_month') { startD = new Date(now.getFullYear(), now.getMonth(), 1); endD = new Date(now.getFullYear(), now.getMonth()+1, 0); }
+      else if (val === 'last_month') { startD = new Date(now.getFullYear(), now.getMonth()-1, 1); endD = new Date(now.getFullYear(), now.getMonth(), 0); }
+      else if (val === 'this_quarter') { var q = Math.floor(now.getMonth()/3)*3; startD = new Date(now.getFullYear(), q, 1); endD = new Date(now.getFullYear(), q+3, 0); }
+      else if (val === 'this_year') { startD = new Date(now.getFullYear(), 0, 1); endD = new Date(now.getFullYear(), 11, 31); }
+      else { startD = new Date(2000,0,1); endD = new Date(2099,11,31); }
+      var filtered = allPayments.filter(function(p) { var d = new Date(p.payment_date); return d >= startD && d <= endD; });
+      var totalAmt = 0;
+      filtered.forEach(function(p) { totalAmt += (p.amount || 0); });
+      // Update summary
+      var summaryBoxes = document.querySelectorAll('.summary-card-box');
+      if (summaryBoxes.length) {
+        summaryBoxes[0].querySelector('.sc-value').textContent = formatINR(totalAmt);
+        summaryBoxes[0].querySelector('.sc-sub').textContent = 'Paid: ' + formatINR(totalAmt);
+      }
+      // Update date range display
+      var fmtD = function(d){ return String(d.getDate()).padStart(2,'0') + '/' + String(d.getMonth()+1).padStart(2,'0') + '/' + d.getFullYear(); };
+      var spanEl = sel.parentElement.querySelector('span');
+      if (spanEl && val !== 'all') spanEl.textContent = fmtD(startD) + '  To  ' + fmtD(endD);
+      else if (spanEl) spanEl.textContent = 'All Time';
+      // Update list
+      var listEl = document.getElementById('poListCards');
+      if (!listEl) {
+        // Remove old empty state and create list area
+        var oldEmpty = document.querySelector('.pe-empty-state');
+        if (oldEmpty) oldEmpty.remove();
+        var container = document.getElementById('content');
+        var div = document.createElement('div');
+        div.className = 'invoice-list';
+        div.id = 'poListCards';
+        container.appendChild(div);
+        listEl = div;
+      }
+      if (!filtered.length) {
+        listEl.innerHTML = '';
+        if (!document.querySelector('.pe-empty-state')) {
+          var emptyDiv = document.createElement('div');
+          emptyDiv.className = 'pe-empty-state';
+          emptyDiv.innerHTML = '<svg width="80" height="80" fill="none" stroke="var(--text-muted)" stroke-width="1" viewBox="0 0 24 24"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/><path d="M9 14l2 2 4-4"/></svg>' +
+            '<h3>No Transactions to show</h3><p>You haven\'t added any transactions yet.</p>' +
+            '<button class="btn-add-primary" onclick="window.goTo(\'new-payment-out\')">+ Add Payment-Out</button>';
+          listEl.parentElement.appendChild(emptyDiv);
+        }
+      } else {
+        var oldEmpty2 = document.querySelector('.pe-empty-state');
+        if (oldEmpty2) oldEmpty2.remove();
+        var cardsHtml = '';
+        filtered.forEach(function(p) { cardsHtml += renderPaymentOutCard(p); });
+        listEl.innerHTML = cardsHtml;
+      }
+    });
   }
 
   window.deletePaymentOut = function (id) {
@@ -3105,34 +3257,100 @@
     $content.innerHTML = '<p class="loading">Loading...</p>';
     api('GET', '/api/expenses').then(function (res) {
       var list = res.expenses || [];
+      var now = new Date();
+      var firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+      var lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+      var fmtD = function(d){ return String(d.getDate()).padStart(2,'0') + '/' + String(d.getMonth()+1).padStart(2,'0') + '/' + d.getFullYear(); };
+      var thisMonth = list.filter(function(e) { var dt = new Date(e.expense_date); return dt >= firstDay && dt <= lastDay; });
       var totalAmt = 0;
-      list.forEach(function (e) { totalAmt += (e.amount || 0); });
-      var html = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">' +
-        '<h2 style="margin:0;font-size:1.1rem">Expenses (' + list.length + ')</h2>' +
-        '<button class="btn btn-primary btn-sm" onclick="window.goTo(\'new-expense\')">+ Add Expense</button></div>';
-      html += '<div class="stats-grid" style="margin-bottom:20px"><div class="stat-card">' +
-        '<div class="stat-label">Total Expenses</div><div class="stat-value">' + formatINR(totalAmt) + '</div></div></div>';
-      if (!list.length) {
-        html += '<div style="text-align:center;padding:40px 20px">' +
-          '<svg width="64" height="64" fill="none" stroke="var(--text-muted)" stroke-width="1.5" viewBox="0 0 24 24" style="margin-bottom:16px"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>' +
-          '<h3 style="color:var(--text-muted)">No Expenses</h3>' +
-          '<p style="color:var(--text-muted)">Track your business expenses here.</p>' +
-          '<button class="btn btn-primary" onclick="window.goTo(\'new-expense\')">+ Add Expense</button></div>';
-        $content.innerHTML = html;
-        return;
+      thisMonth.forEach(function (e) { totalAmt += (e.amount || 0); });
+
+      // Header
+      var html = '<div class="pe-page-header">' +
+        '<h2>Expenses</h2>' +
+        '<button class="btn-add-primary" onclick="window.goTo(\'new-expense\')">+ Add Expense</button></div>';
+
+      // Filter bar
+      html += '<div class="page-filter-bar">' +
+        '<label>Filter by :</label>' +
+        '<select id="expFilterPeriod">' +
+        '<option value="this_month" selected>This Month</option><option value="last_month">Last Month</option>' +
+        '<option value="this_quarter">This Quarter</option><option value="this_year">This Year</option><option value="all">All Time</option></select>' +
+        '<div class="filter-sep"></div>' +
+        '<span style="font-size:0.8rem;color:var(--text-muted)">' + fmtD(firstDay) + '  To  ' + fmtD(lastDay) + '</span></div>';
+
+      // Summary
+      html += '<div class="summary-card-row">' +
+        '<div class="summary-card-box"><div class="sc-label">Total Expenses</div><div class="sc-value">' + formatINR(totalAmt) + '</div></div></div>';
+
+      if (!thisMonth.length) {
+        html += '<div class="pe-empty-state">' +
+          '<svg width="80" height="80" fill="none" stroke="var(--text-muted)" stroke-width="1" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>' +
+          '<h3>No Expenses</h3><p>Track your business expenses here.</p>' +
+          '<button class="btn-add-primary" onclick="window.goTo(\'new-expense\')">+ Add Expense</button></div>';
+      } else {
+        html += '<div class="invoice-list" id="expListCards">';
+        thisMonth.forEach(function (e) {
+          html += '<div class="expense-card" onclick="window.goTo(\'expense\',\'' + e.id + '\')" style="cursor:pointer">' +
+            '<div class="inv-row"><strong>' + esc(e.expense_number) + '</strong>' +
+            '<span class="expense-cat-badge">' + esc(e.category || 'General') + '</span>' +
+            '<span class="payment-amount">' + formatINR(e.amount) + '</span></div>' +
+            '<div class="inv-row"><span>' + esc(e.description || e.party_name || '') + '</span>' +
+            '<span class="payment-mode-badge">' + esc(e.payment_mode || 'cash') + '</span>' +
+            '<span style="color:var(--text-muted);font-size:0.85rem">' + formatDate(e.expense_date) + '</span></div></div>';
+        });
+        html += '</div>';
       }
-      html += '<div class="invoice-list">';
-      list.forEach(function (e) {
-        html += '<div class="expense-card" onclick="window.goTo(\'expense\',\'' + e.id + '\')" style="cursor:pointer">' +
-          '<div class="inv-row"><strong>' + esc(e.expense_number) + '</strong>' +
-          '<span class="expense-cat-badge">' + esc(e.category || 'General') + '</span>' +
-          '<span class="payment-amount">' + formatINR(e.amount) + '</span></div>' +
-          '<div class="inv-row"><span>' + esc(e.description || e.party_name || '') + '</span>' +
-          '<span class="payment-mode-badge">' + esc(e.payment_mode || 'cash') + '</span>' +
-          '<span style="color:var(--text-muted);font-size:0.85rem">' + formatDate(e.expense_date) + '</span></div></div>';
-      });
-      html += '</div>';
       $content.innerHTML = html;
+      // Attach filter
+      var sel = document.getElementById('expFilterPeriod');
+      if (sel) {
+        sel.addEventListener('change', function () {
+          var val = sel.value;
+          var now2 = new Date(), startD, endD;
+          if (val === 'this_month') { startD = new Date(now2.getFullYear(), now2.getMonth(), 1); endD = new Date(now2.getFullYear(), now2.getMonth()+1, 0); }
+          else if (val === 'last_month') { startD = new Date(now2.getFullYear(), now2.getMonth()-1, 1); endD = new Date(now2.getFullYear(), now2.getMonth(), 0); }
+          else if (val === 'this_quarter') { var q = Math.floor(now2.getMonth()/3)*3; startD = new Date(now2.getFullYear(), q, 1); endD = new Date(now2.getFullYear(), q+3, 0); }
+          else if (val === 'this_year') { startD = new Date(now2.getFullYear(), 0, 1); endD = new Date(now2.getFullYear(), 11, 31); }
+          else { startD = new Date(2000,0,1); endD = new Date(2099,11,31); }
+          var filtered = list.filter(function(e) { var dt = new Date(e.expense_date); return dt >= startD && dt <= endD; });
+          var tAmt = 0;
+          filtered.forEach(function(e) { tAmt += (e.amount || 0); });
+          var summaryBox = document.querySelector('.summary-card-box');
+          if (summaryBox) summaryBox.querySelector('.sc-value').textContent = formatINR(tAmt);
+          var fmtD2 = function(d2){ return String(d2.getDate()).padStart(2,'0') + '/' + String(d2.getMonth()+1).padStart(2,'0') + '/' + d2.getFullYear(); };
+          var spanEl = sel.parentElement.querySelector('span');
+          if (spanEl && val !== 'all') spanEl.textContent = fmtD2(startD) + '  To  ' + fmtD2(endD);
+          else if (spanEl) spanEl.textContent = 'All Time';
+          var listEl = document.getElementById('expListCards');
+          var emptyEl = document.querySelector('.pe-empty-state');
+          if (!filtered.length) {
+            if (listEl) listEl.innerHTML = '';
+            if (!emptyEl) {
+              var emptyDiv = document.createElement('div');
+              emptyDiv.className = 'pe-empty-state';
+              emptyDiv.innerHTML = '<svg width="80" height="80" fill="none" stroke="var(--text-muted)" stroke-width="1" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>' +
+                '<h3>No Expenses</h3><p>No transactions in this period.</p>' +
+                '<button class="btn-add-primary" onclick="window.goTo(\'new-expense\')">+ Add Expense</button>';
+              $content.appendChild(emptyDiv);
+            }
+          } else {
+            if (emptyEl) emptyEl.remove();
+            if (!listEl) { listEl = document.createElement('div'); listEl.className = 'invoice-list'; listEl.id = 'expListCards'; $content.appendChild(listEl); }
+            var cHtml = '';
+            filtered.forEach(function(e) {
+              cHtml += '<div class="expense-card" onclick="window.goTo(\'expense\',\'' + e.id + '\')" style="cursor:pointer">' +
+                '<div class="inv-row"><strong>' + esc(e.expense_number) + '</strong>' +
+                '<span class="expense-cat-badge">' + esc(e.category || 'General') + '</span>' +
+                '<span class="payment-amount">' + formatINR(e.amount) + '</span></div>' +
+                '<div class="inv-row"><span>' + esc(e.description || e.party_name || '') + '</span>' +
+                '<span class="payment-mode-badge">' + esc(e.payment_mode || 'cash') + '</span>' +
+                '<span style="color:var(--text-muted);font-size:0.85rem">' + formatDate(e.expense_date) + '</span></div></div>';
+            });
+            listEl.innerHTML = cHtml;
+          }
+        });
+      }
     }).catch(function () { $content.innerHTML = '<p class="text-danger">Failed to load expenses</p>'; });
   }
 
