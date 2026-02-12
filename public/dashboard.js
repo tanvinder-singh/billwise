@@ -2740,8 +2740,7 @@
       if (!thisMonth.length) {
         html += '<div class="pe-empty-state">' +
           '<svg width="80" height="80" fill="none" stroke="var(--text-muted)" stroke-width="1" viewBox="0 0 24 24"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 01-8 0"/></svg>' +
-          '<h3>No ' + meta.title + '</h3><p>You haven\'t added any yet.</p>' +
-          '<button class="btn-add-primary" onclick="window.goTo(\'' + meta.newPage + '\')">+ Add ' + meta.singular + '</button></div>';
+          '<h3>No ' + meta.title + '</h3><p>You haven\'t added any yet.</p></div>';
       } else {
         html += '<div class="invoice-list" id="pdListCards">';
         thisMonth.forEach(function (d) {
@@ -2781,8 +2780,7 @@
               var emptyDiv = document.createElement('div');
               emptyDiv.className = 'pe-empty-state';
               emptyDiv.innerHTML = '<svg width="80" height="80" fill="none" stroke="var(--text-muted)" stroke-width="1" viewBox="0 0 24 24"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 01-8 0"/></svg>' +
-                '<h3>No ' + meta.title + '</h3><p>No transactions in this period.</p>' +
-                '<button class="btn-add-primary" onclick="window.goTo(\'' + meta.newPage + '\')">+ Add ' + meta.singular + '</button>';
+                '<h3>No ' + meta.title + '</h3><p>No transactions in this period.</p>';
               $content.appendChild(emptyDiv);
             }
           } else {
@@ -3088,8 +3086,7 @@
         html += '<div class="pe-empty-state">' +
           '<svg width="80" height="80" fill="none" stroke="var(--text-muted)" stroke-width="1" viewBox="0 0 24 24"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/><path d="M9 14l2 2 4-4"/></svg>' +
           '<h3>No Transactions to show</h3>' +
-          '<p>You haven\'t added any transactions yet.</p>' +
-          '<button class="btn-add-primary" onclick="window.goTo(\'new-payment-out\')">+ Add Payment-Out</button></div>';
+          '<p>You haven\'t added any transactions yet.</p></div>';
         $content.innerHTML = html;
         poAttachFilter(list);
         return;
@@ -3159,8 +3156,7 @@
           var emptyDiv = document.createElement('div');
           emptyDiv.className = 'pe-empty-state';
           emptyDiv.innerHTML = '<svg width="80" height="80" fill="none" stroke="var(--text-muted)" stroke-width="1" viewBox="0 0 24 24"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/><path d="M9 14l2 2 4-4"/></svg>' +
-            '<h3>No Transactions to show</h3><p>You haven\'t added any transactions yet.</p>' +
-            '<button class="btn-add-primary" onclick="window.goTo(\'new-payment-out\')">+ Add Payment-Out</button>';
+            '<h3>No Transactions to show</h3><p>You haven\'t added any transactions yet.</p>';
           listEl.parentElement.appendChild(emptyDiv);
         }
       } else {
