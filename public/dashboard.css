@@ -1078,10 +1078,10 @@ tr:hover td { background:rgba(241,245,249,0.5); }
 /* ============================================
    Print styles — force single A4 page
    ============================================ */
-@page { size:A4; margin:5mm 6mm; }
+@page { size:A4; margin:3mm 5mm; }
 
 @media print {
-  html, body { margin:0 !important; padding:0 !important; background:#fff !important; }
+  html, body { margin:0 !important; padding:0 !important; background:#fff !important; font-size:11px !important; }
   .sidebar, .topbar, .toast, .overlay, .no-print, .theme-selector { display:none !important; }
   .main { margin-left:0 !important; padding:0 !important; }
   .content { padding:0 !important; margin:0 !important; }
@@ -1090,66 +1090,71 @@ tr:hover td { background:rgba(241,245,249,0.5); }
   .invoice-print {
     border:none; box-shadow:none; max-width:none; border-radius:0;
     page-break-after:avoid; page-break-inside:avoid;
+    overflow:hidden;
   }
 
   /* Compact title bar */
-  .invoice-print .inv-title-bar { padding:6px 12px; }
-  .invoice-print .inv-title-bar h2 { font-size:0.95rem; }
+  .invoice-print .inv-title-bar { padding:4px 10px; }
+  .invoice-print .inv-title-bar h2 { font-size:0.85rem; margin:0; }
 
   /* Compact business header */
-  .invoice-print .inv-biz-header { padding:6px 12px 4px; }
-  .invoice-print .inv-biz-header .biz-name { font-size:1rem; margin:0 0 1px; }
-  .invoice-print .inv-biz-header p { font-size:0.7rem; margin:1px 0; }
-  .invoice-print .inv-biz-header .biz-logo { margin-left:10px; }
-  .invoice-print .inv-biz-header .biz-logo img { max-height:55px; max-width:140px; }
+  .invoice-print .inv-biz-header { padding:4px 10px 2px; }
+  .invoice-print .inv-biz-header .biz-name { font-size:0.9rem; margin:0 0 1px; }
+  .invoice-print .inv-biz-header p { font-size:0.6rem; margin:0; line-height:1.3; }
+  .invoice-print .inv-biz-header .biz-logo { margin-left:8px; }
+  .invoice-print .inv-biz-header .biz-logo img { max-height:45px; max-width:110px; }
 
   /* Compact info row (Bill To / Invoice Details) */
-  .invoice-print .inv-info-row { padding:6px 12px; gap:10px; }
-  .invoice-print .inv-info-row p { font-size:0.72rem; margin:1px 0; }
-  .inv-info-label { font-size:0.62rem; margin-bottom:2px; }
+  .invoice-print .inv-info-row { padding:3px 10px; gap:8px; }
+  .invoice-print .inv-info-row p { font-size:0.6rem; margin:0; line-height:1.3; }
+  .inv-info-label { font-size:0.55rem; margin-bottom:1px; }
 
   /* Compact items table */
-  .inv-items-table th { padding:3px 4px; font-size:0.58rem; }
-  .inv-items-table td { padding:2px 4px; font-size:0.68rem; }
-  .inv-items-table td small { font-size:0.55rem; }
-  .inv-items-table tfoot td { padding:3px 4px; font-size:0.68rem; }
+  .inv-items-table th { padding:2px 3px; font-size:0.52rem; }
+  .inv-items-table td { padding:1px 3px; font-size:0.6rem; line-height:1.2; }
+  .inv-items-table td small { font-size:0.48rem; }
+  .inv-items-table tfoot td { padding:2px 3px; font-size:0.6rem; }
 
   /* Compact tax summary */
-  .inv-tax-summary { padding:4px 12px; }
-  .inv-tax-summary .inv-info-label { margin-bottom:2px; }
-  .inv-tax-summary table { font-size:0.65rem; }
-  .inv-tax-summary th { padding:2px 4px; font-size:0.58rem; }
-  .inv-tax-summary td { padding:2px 4px; font-size:0.65rem; }
+  .inv-tax-summary { padding:2px 10px; }
+  .inv-tax-summary .inv-info-label { margin-bottom:1px; }
+  .inv-tax-summary table { font-size:0.55rem; }
+  .inv-tax-summary th { padding:1px 3px; font-size:0.5rem; }
+  .inv-tax-summary td { padding:1px 3px; font-size:0.55rem; }
 
   /* Compact totals */
-  .inv-totals-section { padding:2px 12px 4px; }
-  .inv-totals-section table { min-width:200px; }
-  .inv-totals-section td { padding:1px 6px; font-size:0.75rem; }
-  .inv-totals-section .total-row td { font-size:0.85rem; padding-top:3px; }
+  .inv-totals-section { padding:1px 10px 2px; }
+  .inv-totals-section table { min-width:180px; }
+  .inv-totals-section td { padding:0 4px; font-size:0.65rem; line-height:1.4; }
+  .inv-totals-section .total-row td { font-size:0.75rem; padding-top:1px; }
 
   /* Compact amount in words */
-  .inv-words { margin:2px 12px 4px; padding:4px 8px; font-size:0.7rem; }
+  .inv-words { margin:1px 10px 2px; padding:2px 6px; font-size:0.6rem; }
 
   /* Compact payment section */
-  .inv-payment-section { padding:0 12px 4px; }
-  .inv-payment-section table { min-width:200px; }
-  .inv-payment-section td { padding:1px 6px; font-size:0.75rem; }
+  .inv-payment-section { padding:0 10px 2px; }
+  .inv-payment-section table { min-width:180px; }
+  .inv-payment-section td { padding:0 4px; font-size:0.65rem; line-height:1.4; }
 
   /* Compact terms & notes */
-  .invoice-print div[style*="padding:12px 30px"] { padding:3px 12px !important; }
-  .invoice-print div[style*="padding:0 30px 12px"] { padding:0 12px 3px !important; }
+  .invoice-print div[style*="padding:12px 30px"] { padding:2px 10px !important; font-size:0.6rem !important; }
+  .invoice-print div[style*="padding:12px 30px"] p { font-size:0.6rem !important; margin:1px 0 !important; }
+  .invoice-print div[style*="padding:0 30px 12px"] { padding:0 10px 2px !important; font-size:0.6rem !important; }
 
   /* Compact bank + signature */
-  .inv-bank-sig { padding:0 12px 6px; }
-  .bank-sig-table td { padding:6px 8px; }
-  .bank-cell .bank-content { gap:6px; }
-  .bank-cell p { font-size:0.7rem; margin:1px 0; }
-  .bank-cell .inv-info-label { margin-bottom:3px; }
-  .bank-qr img { max-width:70px !important; max-height:70px !important; }
-  .upi-badge { font-size:0.5rem; padding:1px 4px; }
-  .sig-cell p { font-size:0.7rem; margin:1px 0; }
-  .sig-img { max-height:40px; }
-  .sig-space { height:30px; }
+  .inv-bank-sig { padding:0 10px 4px; }
+  .bank-sig-table td { padding:4px 6px; }
+  .bank-cell .bank-content { gap:4px; }
+  .bank-cell p { font-size:0.6rem; margin:0; line-height:1.3; }
+  .bank-cell .inv-info-label { margin-bottom:2px; }
+  .bank-qr img { max-width:55px !important; max-height:55px !important; }
+  .upi-badge { font-size:0.45rem; padding:1px 3px; }
+  .sig-cell p { font-size:0.6rem; margin:0; line-height:1.3; }
+  .sig-img { max-height:30px; }
+  .sig-space { height:20px; }
+
+  /* You Saved row */
+  .you-saved td { font-size:0.65rem; }
 
   /* Color preservation for all themes */
   .invoice-print .inv-title-bar {
@@ -1175,6 +1180,11 @@ tr:hover td { background:rgba(241,245,249,0.5); }
   .invoice-print table { page-break-inside:avoid; }
   .invoice-print tr { page-break-inside:avoid; }
   .invoice-print > * { page-break-inside:avoid; }
+
+  /* Scale down entire invoice to fit one page if still too tall */
+  .invoice-print {
+    transform-origin:top left;
+  }
 }
 
 /* ============================================
@@ -1216,13 +1226,13 @@ tr:hover td { background:rgba(241,245,249,0.5); }
 
 /* Autocomplete dropdown */
 .ac-wrap { position:relative; }
-.ac-dropdown {
+.ac-dropdown, .ac-list {
   display:none; position:absolute; top:100%; left:0; right:0; z-index:60;
   background:var(--surface); border:1.5px solid var(--primary);
   border-top:none; border-radius:0 0 var(--radius-sm) var(--radius-sm);
   box-shadow:0 8px 16px rgba(0,0,0,0.1); max-height:220px; overflow-y:auto;
 }
-.ac-dropdown.open { display:block; }
+.ac-dropdown.open, .ac-list.open { display:block; }
 .ac-item {
   padding:8px 12px; cursor:pointer; font-size:0.875rem;
   border-bottom:1px solid var(--border); transition:background 0.1s;
@@ -1234,7 +1244,7 @@ tr:hover td { background:rgba(241,245,249,0.5); }
 .ac-item b { color:var(--primary); }
 /* inside table cells */
 .items-table td .ac-wrap { width:100%; }
-.items-table td .ac-dropdown { min-width:240px; }
+.items-table td .ac-dropdown, .items-table td .ac-list { min-width:240px; }
 
 /* Toast */
 .toast {

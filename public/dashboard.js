@@ -1588,6 +1588,33 @@
           });
         });
       });
+
+      // Auto-scale invoice to fit single A4 page when printing
+      function scaleInvoiceForPrint() {
+        var printArea = document.getElementById('invoicePrintArea');
+        if (!printArea) return;
+        // Reset any prior scaling
+        printArea.style.transform = '';
+        printArea.style.width = '';
+        // Wait a tick for layout to settle
+        requestAnimationFrame(function () {
+          var h = printArea.scrollHeight;
+          // A4 at ~96dpi with 3mm top+bottom margin ≈ 1103px - 23px ≈ 1080px usable
+          var maxH = 1050;
+          if (h > maxH) {
+            var scale = maxH / h;
+            printArea.style.transform = 'scale(' + scale + ')';
+            printArea.style.transformOrigin = 'top left';
+            printArea.style.width = (100 / scale) + '%';
+          }
+        });
+      }
+      window.addEventListener('beforeprint', scaleInvoiceForPrint);
+      // Restore after print
+      window.addEventListener('afterprint', function () {
+        var printArea = document.getElementById('invoicePrintArea');
+        if (printArea) { printArea.style.transform = ''; printArea.style.width = ''; }
+      });
     });
   }
 
