@@ -2833,13 +2833,19 @@
     pdAddItemRow();
     pdRecalculate();
     // Supplier autocomplete
-    acSearch('pdSupplier', 'pdSupplierAC', '/api/parties?q=', 'name', function (p) {
-      document.getElementById('pdPhone').value = p.phone || '';
-      document.getElementById('pdEmail').value = p.email || '';
-      document.getElementById('pdAddress').value = p.address || '';
-      document.getElementById('pdGstin').value = p.gstin || '';
-      document.getElementById('pdState').value = p.state || '';
-    });
+    acSearch(document.getElementById('pdSupplier'), document.getElementById('pdSupplierAC'), '/api/parties',
+      function (p, q) {
+        return '<div class="ac-main">' + acHL(p.name, q) + '</div>' +
+          (p.phone ? '<div class="ac-sub">Ph: ' + p.phone + '</div>' : '');
+      },
+      function (p) {
+        document.getElementById('pdSupplier').value = p.name;
+        document.getElementById('pdPhone').value = p.phone || '';
+        document.getElementById('pdEmail').value = p.email || '';
+        document.getElementById('pdAddress').value = p.address || '';
+        document.getElementById('pdGstin').value = p.gstin || '';
+        document.getElementById('pdState').value = p.state || '';
+      });
   }
 
   function pdAddItemRow() {
@@ -2857,12 +2863,18 @@
     // Item autocomplete
     var nameInp = tr.querySelector('.pd-item-name');
     var acDiv = tr.querySelector('.pd-item-ac');
-    acSearch(nameInp, acDiv, '/api/products?q=', 'name', function (p) {
-      tr.querySelector('.pd-item-hsn').value = p.hsn || '';
-      tr.querySelector('.pd-item-rate').value = p.rate || 0;
-      tr.querySelector('.pd-item-gst').value = p.gst || 0;
-      pdRecalculate();
-    });
+    acSearch(nameInp, acDiv, '/api/products',
+      function (p, q) {
+        return '<div class="ac-main">' + acHL(p.name, q) + '</div>' +
+          '<div class="ac-sub">Rate: ' + formatINR(p.rate || 0) + (p.hsn ? ' \u2022 HSN: ' + p.hsn : '') + '</div>';
+      },
+      function (p) {
+        nameInp.value = p.name;
+        tr.querySelector('.pd-item-hsn').value = p.hsn || '';
+        tr.querySelector('.pd-item-rate').value = p.rate || 0;
+        tr.querySelector('.pd-item-gst').value = p.gst || 0;
+        pdRecalculate();
+      });
     ['pd-item-qty','pd-item-rate','pd-item-gst'].forEach(function (cls) {
       tr.querySelector('.' + cls).addEventListener('input', pdRecalculate);
     });
@@ -3191,9 +3203,15 @@
     $content.innerHTML = html;
 
     // Party autocomplete
-    acSearch('poParty', 'poPartyAC', '/api/parties?q=', 'name', function (p) {
-      loadUnpaidPurchaseBills(p.name);
-    });
+    acSearch(document.getElementById('poParty'), document.getElementById('poPartyAC'), '/api/parties',
+      function (p, q) {
+        return '<div class="ac-main">' + acHL(p.name, q) + '</div>' +
+          (p.phone ? '<div class="ac-sub">Ph: ' + p.phone + '</div>' : '');
+      },
+      function (p) {
+        document.getElementById('poParty').value = p.name;
+        loadUnpaidPurchaseBills(p.name);
+      });
 
     document.getElementById('poSaveBtn').addEventListener('click', function () {
       var party = (document.getElementById('poParty').value || '').trim();
@@ -3505,7 +3523,12 @@
     });
 
     // Party autocomplete
-    acSearch('expParty', 'expPartyAC', '/api/parties?q=', 'name', function () {});
+    acSearch(document.getElementById('expParty'), document.getElementById('expPartyAC'), '/api/parties',
+      function (p, q) {
+        return '<div class="ac-main">' + acHL(p.name, q) + '</div>' +
+          (p.phone ? '<div class="ac-sub">Ph: ' + p.phone + '</div>' : '');
+      },
+      function (p) { document.getElementById('expParty').value = p.name; });
 
     document.getElementById('expSaveBtn').addEventListener('click', function () {
       var amount = parseFloat(document.getElementById('expAmount').value);
