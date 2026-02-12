@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="dashboard.css?v=22" />
+  <link rel="stylesheet" href="dashboard.css?v=23" />
 </head>
 <body>
   <div class="app">
@@ -66,6 +66,30 @@
             </button>
           </div>
         </div>
+        <div class="nav-group" id="purchaseNavGroup">
+          <button type="button" class="nav-group-header" id="purchaseGroupToggle">
+            <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 01-8 0"/></svg>
+            <span>Purchase & Expense</span>
+            <svg class="nav-group-arrow" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+          <div class="nav-group-items" id="purchaseGroupItems">
+            <button type="button" class="nav-item nav-sub-item" data-page="purchase-bills" onclick="window.goTo('purchase-bills')">
+              <span>Purchase Bills</span>
+            </button>
+            <button type="button" class="nav-item nav-sub-item" data-page="payments-out" onclick="window.goTo('payments-out')">
+              <span>Payment-Out</span>
+            </button>
+            <button type="button" class="nav-item nav-sub-item" data-page="expenses-list" onclick="window.goTo('expenses-list')">
+              <span>Expenses</span>
+            </button>
+            <button type="button" class="nav-item nav-sub-item" data-page="purchase-orders" onclick="window.goTo('purchase-orders')">
+              <span>Purchase Order</span>
+            </button>
+            <button type="button" class="nav-item nav-sub-item" data-page="purchase-returns" onclick="window.goTo('purchase-returns')">
+              <span>Purchase Return / Dr. Note</span>
+            </button>
+          </div>
+        </div>
         <button type="button" class="nav-item" data-page="reports" onclick="window.goTo('reports')">
           <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
           <span>Reports</span>
@@ -108,6 +132,6 @@
   </div>
   <div class="toast" id="toast"></div>
   <div class="overlay" id="overlay"></div>
-  <script src="dashboard.js?v=21"></script>
+  <script src="dashboard.js?v=22"></script>
 </body>
 </html>

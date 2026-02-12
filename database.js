@@ -192,6 +192,76 @@ async function initDB() {
       );
       CREATE INDEX IF NOT EXISTS idx_payments_in_user ON payments_in(user_id);
       CREATE INDEX IF NOT EXISTS idx_payments_in_invoice ON payments_in(invoice_id);
+
+      -- Purchase documents (purchase bills, purchase orders, purchase returns)
+      CREATE TABLE IF NOT EXISTS purchase_documents (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        doc_type VARCHAR(20) NOT NULL,
+        doc_number VARCHAR(50) NOT NULL,
+        doc_date DATE DEFAULT CURRENT_DATE,
+        due_date DATE,
+        supplier_name VARCHAR(200),
+        supplier_phone VARCHAR(20) DEFAULT '',
+        supplier_email VARCHAR(200) DEFAULT '',
+        supplier_address TEXT DEFAULT '',
+        supplier_gstin VARCHAR(15) DEFAULT '',
+        supplier_state VARCHAR(100) DEFAULT '',
+        place_of_supply VARCHAR(100) DEFAULT '',
+        payment_terms VARCHAR(50) DEFAULT '',
+        items JSONB DEFAULT '[]',
+        subtotal NUMERIC(12,2) DEFAULT 0,
+        cgst NUMERIC(12,2) DEFAULT 0,
+        sgst NUMERIC(12,2) DEFAULT 0,
+        igst NUMERIC(12,2) DEFAULT 0,
+        round_off NUMERIC(12,2) DEFAULT 0,
+        discount NUMERIC(12,2) DEFAULT 0,
+        total NUMERIC(12,2) DEFAULT 0,
+        amount_paid NUMERIC(12,2) DEFAULT 0,
+        status VARCHAR(20) DEFAULT 'unpaid',
+        reference_id UUID,
+        reference_number VARCHAR(100) DEFAULT '',
+        notes TEXT DEFAULT '',
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_purchase_docs_user ON purchase_documents(user_id);
+      CREATE INDEX IF NOT EXISTS idx_purchase_docs_type ON purchase_documents(user_id, doc_type);
+
+      -- Payments made to suppliers
+      CREATE TABLE IF NOT EXISTS payments_out (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        payment_number VARCHAR(50) NOT NULL,
+        purchase_id UUID,
+        party_name VARCHAR(200) DEFAULT '',
+        party_id UUID,
+        amount NUMERIC(12,2) NOT NULL,
+        payment_date DATE DEFAULT CURRENT_DATE,
+        payment_mode VARCHAR(50) DEFAULT 'cash',
+        reference_number VARCHAR(100) DEFAULT '',
+        notes TEXT DEFAULT '',
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_payments_out_user ON payments_out(user_id);
+
+      -- Business expenses
+      CREATE TABLE IF NOT EXISTS expenses (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        expense_number VARCHAR(50) NOT NULL,
+        expense_date DATE DEFAULT CURRENT_DATE,
+        category VARCHAR(100) DEFAULT 'General',
+        description TEXT DEFAULT '',
+        amount NUMERIC(12,2) NOT NULL,
+        payment_mode VARCHAR(50) DEFAULT 'cash',
+        reference_number VARCHAR(100) DEFAULT '',
+        party_name VARCHAR(200) DEFAULT '',
+        gst_applicable BOOLEAN DEFAULT false,
+        gst_amount NUMERIC(12,2) DEFAULT 0,
+        notes TEXT DEFAULT '',
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_expenses_user ON expenses(user_id);
     `);
     console.log('  [DB] PostgreSQL tables initialized');
   } finally {
@@ -215,7 +285,7 @@ function norm(row) {
   }
   // Convert numeric columns from string to number
   ['subtotal','cgst','sgst','igst','round_off','total_mrp','discount','total','amount_paid',
-   'opening_balance','credit_limit','mrp','rate','gst','stock_quantity','low_stock_threshold','amount'].forEach(k => {
+   'opening_balance','credit_limit','mrp','rate','gst','stock_quantity','low_stock_threshold','amount','gst_amount'].forEach(k => {
     if (r[k] !== undefined && r[k] !== null) r[k] = parseFloat(r[k]);
   });
   // Parse JSONB fields
@@ -401,5 +471,8 @@ const parties = createCollection('parties');
 const products = createCollection('products');
 const saleDocuments = createCollection('sale_documents');
 const paymentsIn = createCollection('payments_in');
+const purchaseDocuments = createCollection('purchase_documents');
+const paymentsOut = createCollection('payments_out');
+const expenses = createCollection('expenses');
 
-module.exports = { pool, initDB, users, invoices, otps, parties, products, saleDocuments, paymentsIn };
+module.exports = { pool, initDB, users, invoices, otps, parties, products, saleDocuments, paymentsIn, purchaseDocuments, paymentsOut, expenses };

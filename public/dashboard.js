@@ -44,6 +44,11 @@
     if (saleGroup) {
       if (salePages.indexOf(page) !== -1) saleGroup.classList.add('open');
     }
+    var purchasePages = ['purchase-bills','new-purchase-bill','purchase-bill','purchase-orders','new-purchase-order','purchase-order','purchase-returns','new-purchase-return','purchase-return','payments-out','new-payment-out','expenses-list','new-expense','expense'];
+    var purchaseGroup = document.getElementById('purchaseNavGroup');
+    if (purchaseGroup) {
+      if (purchasePages.indexOf(page) !== -1) purchaseGroup.classList.add('open');
+    }
     $sidebar.classList.remove('open');
     $overlay.classList.remove('active');
     try {
@@ -72,6 +77,20 @@
         case 'sale-return':     renderSaleDocDetail('sale_return', param); break;
         case 'payments-in':    renderPaymentsInList(); break;
         case 'new-payment-in': renderNewPaymentIn(); break;
+        case 'purchase-bills':      renderPurchaseDocList('purchase_bill'); break;
+        case 'new-purchase-bill':   renderPurchaseDocForm('purchase_bill'); break;
+        case 'purchase-bill':       renderPurchaseDocDetail('purchase_bill', param); break;
+        case 'purchase-orders':     renderPurchaseDocList('purchase_order'); break;
+        case 'new-purchase-order':  renderPurchaseDocForm('purchase_order'); break;
+        case 'purchase-order':      renderPurchaseDocDetail('purchase_order', param); break;
+        case 'purchase-returns':    renderPurchaseDocList('purchase_return'); break;
+        case 'new-purchase-return': renderPurchaseDocForm('purchase_return'); break;
+        case 'purchase-return':     renderPurchaseDocDetail('purchase_return', param); break;
+        case 'payments-out':    renderPaymentsOutList(); break;
+        case 'new-payment-out': renderNewPaymentOut(); break;
+        case 'expenses-list':   renderExpensesList(); break;
+        case 'new-expense':     renderNewExpense(); break;
+        case 'expense':         renderExpenseDetail(param); break;
         case 'reports':     renderReports(); break;
         case 'admin':       renderAdmin(); break;
         case 'settings':    renderSettings(); break;
@@ -286,6 +305,12 @@
   if (saleGroupToggle) {
     saleGroupToggle.addEventListener('click', function () {
       document.getElementById('saleNavGroup').classList.toggle('open');
+    });
+  }
+  var purchaseGroupToggle = document.getElementById('purchaseGroupToggle');
+  if (purchaseGroupToggle) {
+    purchaseGroupToggle.addEventListener('click', function () {
+      document.getElementById('purchaseNavGroup').classList.toggle('open');
     });
   }
 
@@ -2659,6 +2684,546 @@
     }).catch(function () {
       container.innerHTML = '<p style="color:var(--text-muted);font-size:0.875rem">Failed to load invoices.</p>';
     });
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // PURCHASE & EXPENSE
+  // ═══════════════════════════════════════════════════════════
+
+  var PURCHASE_DOC_META = {
+    purchase_bill:   { title: 'Purchase Bills', singular: 'Purchase Bill', newPage: 'new-purchase-bill', viewPage: 'purchase-bill', prefix: 'PB', statusOptions: ['unpaid','partial','paid'], statusDefault: 'unpaid' },
+    purchase_order:  { title: 'Purchase Orders', singular: 'Purchase Order', newPage: 'new-purchase-order', viewPage: 'purchase-order', prefix: 'PO', statusOptions: ['draft','sent','accepted','rejected','converted'], statusDefault: 'draft' },
+    purchase_return: { title: 'Purchase Returns', singular: 'Purchase Return / Dr. Note', newPage: 'new-purchase-return', viewPage: 'purchase-return', prefix: 'PR', statusOptions: ['draft','sent','accepted','refunded'], statusDefault: 'draft' }
+  };
+
+  function purchaseStatusBadge(s) {
+    var map = { unpaid:'badge-unpaid', partial:'badge-partial', paid:'badge-paid',
+      draft:'badge-draft', sent:'badge-sent', accepted:'badge-accepted',
+      rejected:'badge-rejected', converted:'badge-converted', refunded:'badge-refunded' };
+    return '<span class="badge ' + (map[s] || 'badge-draft') + '">' + esc(s) + '</span>';
+  }
+
+  // ── Purchase Doc List ──
+  function renderPurchaseDocList(docType) {
+    var meta = PURCHASE_DOC_META[docType];
+    $pageTitle.textContent = meta.title;
+    $content.innerHTML = '<p class="loading">Loading...</p>';
+    api('GET', '/api/purchase-docs?type=' + docType).then(function (res) {
+      var docs = res.documents || [];
+      if (!docs.length) {
+        $content.innerHTML = '<div style="text-align:center;padding:60px 20px">' +
+          '<svg width="64" height="64" fill="none" stroke="var(--text-muted)" stroke-width="1.5" viewBox="0 0 24 24" style="margin-bottom:16px"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 01-8 0"/></svg>' +
+          '<h3 style="color:var(--text-muted)">No ' + meta.title + '</h3>' +
+          '<p style="color:var(--text-muted)">You haven\'t added any yet.</p>' +
+          '<button class="btn btn-primary" onclick="window.goTo(\'' + meta.newPage + '\')">+ Add ' + meta.singular + '</button></div>';
+        return;
+      }
+      var html = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">' +
+        '<h2 style="margin:0;font-size:1.1rem">' + meta.title + ' (' + docs.length + ')</h2>' +
+        '<button class="btn btn-primary btn-sm" onclick="window.goTo(\'' + meta.newPage + '\')">+ Add ' + meta.singular + '</button></div>';
+      // Summary card
+      var totalAmt = 0, paidAmt = 0;
+      docs.forEach(function(d) { totalAmt += (d.total || 0); paidAmt += (d.amount_paid || 0); });
+      html += '<div class="stats-grid" style="margin-bottom:20px"><div class="stat-card">' +
+        '<div class="stat-label">Total Amount</div><div class="stat-value">' + formatINR(totalAmt) + '</div>' +
+        '</div><div class="stat-card"><div class="stat-label">Paid</div><div class="stat-value">' + formatINR(paidAmt) + '</div></div></div>';
+      html += '<div class="invoice-list">';
+      docs.forEach(function (d) {
+        html += '<div class="invoice-card" onclick="window.goTo(\'' + meta.viewPage + '\',\'' + d.id + '\')" style="cursor:pointer">' +
+          '<div class="inv-row"><strong>' + esc(d.doc_number) + '</strong> ' + purchaseStatusBadge(d.status) +
+          '<span class="inv-total">' + formatINR(d.total) + '</span></div>' +
+          '<div class="inv-row"><span>' + esc(d.supplier_name || 'No supplier') + '</span><span style="color:var(--text-muted);font-size:0.85rem">' + formatDate(d.doc_date) + '</span></div></div>';
+      });
+      html += '</div>';
+      $content.innerHTML = html;
+    }).catch(function () { $content.innerHTML = '<p class="text-danger">Failed to load ' + meta.title + '</p>'; });
+  }
+
+  // ── Purchase Doc Form ──
+  function renderPurchaseDocForm(docType) {
+    var meta = PURCHASE_DOC_META[docType];
+    $pageTitle.textContent = 'New ' + meta.singular;
+    var today = new Date().toISOString().slice(0, 10);
+    var html = '<form id="purchaseDocForm" class="form-card" onsubmit="return false">' +
+      '<div class="form-grid">' +
+      '<div class="form-group"><label>Supplier Name *</label><div class="ac-wrap"><input id="pdSupplier" class="form-control" placeholder="Type supplier name" autocomplete="off" required /><div class="ac-list" id="pdSupplierAC"></div></div></div>' +
+      '<div class="form-group"><label>Supplier Phone</label><input id="pdPhone" class="form-control" placeholder="Phone" /></div>' +
+      '<div class="form-group"><label>Supplier Email</label><input id="pdEmail" class="form-control" placeholder="Email" /></div>' +
+      '<div class="form-group"><label>Supplier Address</label><input id="pdAddress" class="form-control" placeholder="Address" /></div>' +
+      '<div class="form-group"><label>Supplier GSTIN</label><input id="pdGstin" class="form-control" placeholder="GSTIN" maxlength="15" /></div>' +
+      '<div class="form-group"><label>Supplier State</label><input id="pdState" class="form-control" placeholder="State" /></div>' +
+      '<div class="form-group"><label>Date</label><input id="pdDate" type="date" class="form-control" value="' + today + '" /></div>' +
+      '<div class="form-group"><label>' + (docType === 'purchase_order' ? 'Expected Date' : 'Due Date') + '</label><input id="pdDueDate" type="date" class="form-control" /></div>' +
+      '</div>' +
+      '<h3 style="margin-top:20px;font-size:1rem">Items</h3>' +
+      '<div id="pdItemsWrap"><table class="items-table"><thead><tr><th>Item</th><th>HSN</th><th>Qty</th><th>Rate</th><th>GST%</th><th>Amount</th><th></th></tr></thead><tbody id="pdItemsBody"></tbody></table></div>' +
+      '<button type="button" class="btn btn-outline btn-sm" style="margin-top:8px" onclick="pdAddItemRow()">+ Add Item</button>' +
+      '<div class="form-grid" style="margin-top:18px">' +
+      '<div class="form-group"><label>Notes</label><textarea id="pdNotes" class="form-control" rows="2" placeholder="Notes"></textarea></div>' +
+      '<div class="form-group"><label>Reference Number</label><input id="pdRefNo" class="form-control" placeholder="Bill / Reference #" /></div>' +
+      '</div>' +
+      '<div id="pdTotals" class="totals-box"></div>' +
+      '<div style="margin-top:18px;display:flex;gap:10px">' +
+      '<button type="button" class="btn btn-primary" onclick="pdSubmit(\'' + docType + '\')">Save ' + meta.singular + '</button>' +
+      '<button type="button" class="btn btn-outline" onclick="window.goTo(\'' + meta.newPage.replace('new-','') + 's\')">Cancel</button></div></form>';
+    $content.innerHTML = html;
+    pdAddItemRow();
+    pdRecalculate();
+    // Supplier autocomplete
+    acSearch('pdSupplier', 'pdSupplierAC', '/api/parties?q=', 'name', function (p) {
+      document.getElementById('pdPhone').value = p.phone || '';
+      document.getElementById('pdEmail').value = p.email || '';
+      document.getElementById('pdAddress').value = p.address || '';
+      document.getElementById('pdGstin').value = p.gstin || '';
+      document.getElementById('pdState').value = p.state || '';
+    });
+  }
+
+  function pdAddItemRow() {
+    var tbody = document.getElementById('pdItemsBody');
+    if (!tbody) return;
+    var tr = document.createElement('tr');
+    tr.innerHTML = '<td><div class="ac-wrap"><input class="form-control pd-item-name" placeholder="Item name" autocomplete="off" /><div class="ac-list pd-item-ac"></div></div></td>' +
+      '<td><input class="form-control pd-item-hsn" style="width:70px" /></td>' +
+      '<td><input class="form-control pd-item-qty" type="number" value="1" min="0" step="any" style="width:60px" /></td>' +
+      '<td><input class="form-control pd-item-rate" type="number" step="any" value="0" style="width:80px" /></td>' +
+      '<td><input class="form-control pd-item-gst" type="number" value="0" step="any" style="width:60px" /></td>' +
+      '<td class="pd-item-amt" style="text-align:right;white-space:nowrap">0.00</td>' +
+      '<td><button type="button" class="btn-icon" onclick="this.closest(\'tr\').remove();pdRecalculate()" title="Remove">&times;</button></td>';
+    tbody.appendChild(tr);
+    // Item autocomplete
+    var nameInp = tr.querySelector('.pd-item-name');
+    var acDiv = tr.querySelector('.pd-item-ac');
+    acSearch(nameInp, acDiv, '/api/products?q=', 'name', function (p) {
+      tr.querySelector('.pd-item-hsn').value = p.hsn || '';
+      tr.querySelector('.pd-item-rate').value = p.rate || 0;
+      tr.querySelector('.pd-item-gst').value = p.gst || 0;
+      pdRecalculate();
+    });
+    ['pd-item-qty','pd-item-rate','pd-item-gst'].forEach(function (cls) {
+      tr.querySelector('.' + cls).addEventListener('input', pdRecalculate);
+    });
+  }
+
+  function pdRecalculate() {
+    var rows = document.querySelectorAll('#pdItemsBody tr');
+    var subtotal = 0, totalCgst = 0, totalSgst = 0;
+    rows.forEach(function (tr) {
+      var qty = parseFloat(tr.querySelector('.pd-item-qty').value) || 0;
+      var rate = parseFloat(tr.querySelector('.pd-item-rate').value) || 0;
+      var gstP = parseFloat(tr.querySelector('.pd-item-gst').value) || 0;
+      var lineTotal = qty * rate;
+      var gstAmt = lineTotal * gstP / 100;
+      subtotal += lineTotal;
+      totalCgst += gstAmt / 2;
+      totalSgst += gstAmt / 2;
+      tr.querySelector('.pd-item-amt').textContent = (lineTotal + gstAmt).toFixed(2);
+    });
+    var total = subtotal + totalCgst + totalSgst;
+    var roundOff = Math.round(total) - total;
+    var grandTotal = Math.round(total);
+    var box = document.getElementById('pdTotals');
+    if (box) {
+      box.innerHTML = '<div class="totals-row"><span>Subtotal</span><span>' + formatINR(subtotal) + '</span></div>' +
+        '<div class="totals-row"><span>CGST</span><span>' + formatINR(totalCgst) + '</span></div>' +
+        '<div class="totals-row"><span>SGST</span><span>' + formatINR(totalSgst) + '</span></div>' +
+        '<div class="totals-row"><span>Round Off</span><span>' + roundOff.toFixed(2) + '</span></div>' +
+        '<div class="totals-row total-final"><span>Total</span><span>' + formatINR(grandTotal) + '</span></div>';
+    }
+  }
+
+  function pdSubmit(docType) {
+    var supplier = (document.getElementById('pdSupplier').value || '').trim();
+    if (!supplier) return showToast('Supplier name is required', 'error');
+    var rows = document.querySelectorAll('#pdItemsBody tr');
+    var items = [], subtotal = 0, tCgst = 0, tSgst = 0;
+    rows.forEach(function (tr) {
+      var name = tr.querySelector('.pd-item-name').value.trim();
+      if (!name) return;
+      var qty = parseFloat(tr.querySelector('.pd-item-qty').value) || 0;
+      var rate = parseFloat(tr.querySelector('.pd-item-rate').value) || 0;
+      var gst = parseFloat(tr.querySelector('.pd-item-gst').value) || 0;
+      var hsn = tr.querySelector('.pd-item-hsn').value.trim();
+      var lineTotal = qty * rate;
+      var gstAmt = lineTotal * gst / 100;
+      subtotal += lineTotal;
+      tCgst += gstAmt / 2;
+      tSgst += gstAmt / 2;
+      items.push({ name: name, hsn: hsn, qty: qty, rate: rate, gst: gst, amount: lineTotal + gstAmt });
+    });
+    if (!items.length) return showToast('Add at least one item', 'error');
+    var total = subtotal + tCgst + tSgst;
+    var roundOff = Math.round(total) - total;
+    var grandTotal = Math.round(total);
+    var body = {
+      doc_type: docType,
+      doc_date: document.getElementById('pdDate').value,
+      due_date: document.getElementById('pdDueDate').value || null,
+      supplier_name: supplier,
+      supplier_phone: document.getElementById('pdPhone').value,
+      supplier_email: document.getElementById('pdEmail').value,
+      supplier_address: document.getElementById('pdAddress').value,
+      supplier_gstin: document.getElementById('pdGstin').value,
+      supplier_state: document.getElementById('pdState').value,
+      items: items, subtotal: subtotal, cgst: tCgst, sgst: tSgst, igst: 0,
+      total: grandTotal, round_off: roundOff, discount: 0,
+      notes: document.getElementById('pdNotes').value,
+      reference_number: document.getElementById('pdRefNo').value
+    };
+    api('POST', '/api/purchase-docs', body).then(function (res) {
+      if (res.error) return showToast(res.error, 'error');
+      showToast(res.message || 'Saved!', 'success');
+      window.goTo(PURCHASE_DOC_META[docType].viewPage.replace(/-/g, '-'), res.document.id);
+    }).catch(function () { showToast('Failed to save', 'error'); });
+  }
+
+  // ── Purchase Doc Detail ──
+  function renderPurchaseDocDetail(docType, id) {
+    var meta = PURCHASE_DOC_META[docType];
+    $pageTitle.textContent = meta.singular;
+    $content.innerHTML = '<p class="loading">Loading...</p>';
+    api('GET', '/api/purchase-docs/' + id).then(function (res) {
+      if (res.error) { $content.innerHTML = '<p class="text-danger">' + esc(res.error) + '</p>'; return; }
+      var d = res.document;
+      var items = d.items || [];
+      var html = '<div class="detail-actions" style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">' +
+        '<button class="btn btn-sm btn-outline" onclick="window.print()">Print</button>';
+      if (docType === 'purchase_order' && d.status !== 'converted') {
+        html += '<button class="btn btn-sm btn-primary" id="pdConvertBtn">Convert to Purchase Bill</button>';
+      }
+      html += '<button class="btn btn-sm btn-danger" id="pdDeleteBtn">Delete</button></div>';
+      html += '<div class="print-doc" id="printArea">';
+      html += '<div class="doc-header"><div><h2>' + meta.singular + '</h2><p><strong>#' + esc(d.doc_number) + '</strong></p>' +
+        '<p>Date: ' + formatDateSlash(d.doc_date) + '</p>' +
+        (d.due_date ? '<p>Due: ' + formatDateSlash(d.due_date) + '</p>' : '') +
+        (d.reference_number ? '<p>Ref: ' + esc(d.reference_number) + '</p>' : '') +
+        '</div><div style="text-align:right">' + purchaseStatusBadge(d.status) + '</div></div>';
+      html += '<div class="doc-parties" style="margin-top:16px"><div><strong>Supplier</strong><br>' + esc(d.supplier_name || '') +
+        (d.supplier_phone ? '<br>' + esc(d.supplier_phone) : '') +
+        (d.supplier_email ? '<br>' + esc(d.supplier_email) : '') +
+        (d.supplier_address ? '<br>' + esc(d.supplier_address) : '') +
+        (d.supplier_gstin ? '<br>GSTIN: ' + esc(d.supplier_gstin) : '') + '</div></div>';
+      html += '<table class="doc-items-table" style="margin-top:16px"><thead><tr><th>#</th><th>Item</th><th>HSN</th><th>Qty</th><th>Rate</th><th>GST%</th><th style="text-align:right">Amount</th></tr></thead><tbody>';
+      items.forEach(function (it, i) {
+        html += '<tr><td>' + (i + 1) + '</td><td>' + esc(it.name) + '</td><td>' + esc(it.hsn || '') + '</td>' +
+          '<td>' + it.qty + '</td><td>' + formatINR(it.rate) + '</td><td>' + (it.gst || 0) + '%</td>' +
+          '<td style="text-align:right">' + formatINR(it.amount || 0) + '</td></tr>';
+      });
+      html += '</tbody></table>';
+      html += '<div class="doc-totals" style="margin-top:16px">';
+      html += '<div class="totals-row"><span>Subtotal</span><span>' + formatINR(d.subtotal) + '</span></div>';
+      if (d.cgst) html += '<div class="totals-row"><span>CGST</span><span>' + formatINR(d.cgst) + '</span></div>';
+      if (d.sgst) html += '<div class="totals-row"><span>SGST</span><span>' + formatINR(d.sgst) + '</span></div>';
+      if (d.igst) html += '<div class="totals-row"><span>IGST</span><span>' + formatINR(d.igst) + '</span></div>';
+      if (d.discount) html += '<div class="totals-row"><span>Discount</span><span>-' + formatINR(d.discount) + '</span></div>';
+      if (d.round_off) html += '<div class="totals-row"><span>Round Off</span><span>' + Number(d.round_off).toFixed(2) + '</span></div>';
+      html += '<div class="totals-row total-final"><span>Total</span><span>' + formatINR(d.total) + '</span></div>';
+      if (docType === 'purchase_bill') {
+        html += '<div class="totals-row"><span>Amount Paid</span><span>' + formatINR(d.amount_paid || 0) + '</span></div>';
+        var outstanding = (d.total || 0) - (d.amount_paid || 0);
+        if (outstanding > 0) html += '<div class="totals-row" style="color:var(--danger)"><span>Outstanding</span><span>' + formatINR(outstanding) + '</span></div>';
+      }
+      html += '</div>';
+      if (d.notes) html += '<div style="margin-top:14px"><strong>Notes:</strong> ' + esc(d.notes) + '</div>';
+      html += '</div>';
+      $content.innerHTML = html;
+
+      // Delete handler
+      document.getElementById('pdDeleteBtn').addEventListener('click', function () {
+        if (!confirm('Delete this ' + meta.singular + '?')) return;
+        api('DELETE', '/api/purchase-docs/' + id).then(function (r) {
+          if (r.error) return showToast(r.error, 'error');
+          showToast('Deleted', 'success');
+          window.goTo(meta.newPage.replace('new-', '') + 's');
+        });
+      });
+      // Convert PO → PB
+      var convertBtn = document.getElementById('pdConvertBtn');
+      if (convertBtn) {
+        convertBtn.addEventListener('click', function () {
+          if (!confirm('Convert this Purchase Order to a Purchase Bill?')) return;
+          var pbBody = {
+            doc_type: 'purchase_bill',
+            doc_date: new Date().toISOString().slice(0, 10),
+            supplier_name: d.supplier_name,
+            supplier_phone: d.supplier_phone || '',
+            supplier_email: d.supplier_email || '',
+            supplier_address: d.supplier_address || '',
+            supplier_gstin: d.supplier_gstin || '',
+            supplier_state: d.supplier_state || '',
+            items: d.items, subtotal: d.subtotal, cgst: d.cgst, sgst: d.sgst,
+            igst: d.igst, total: d.total, round_off: d.round_off, discount: d.discount,
+            notes: d.notes || '', reference_number: d.doc_number, reference_id: d.id
+          };
+          api('POST', '/api/purchase-docs', pbBody).then(function (r2) {
+            if (r2.error) return showToast(r2.error, 'error');
+            // Mark PO as converted
+            api('PUT', '/api/purchase-docs/' + id, { status: 'converted' }).then(function () {
+              showToast('Converted to ' + r2.document.doc_number, 'success');
+              window.goTo('purchase-bill', r2.document.id);
+            });
+          });
+        });
+      }
+    }).catch(function () { $content.innerHTML = '<p class="text-danger">Failed to load document</p>'; });
+  }
+
+  // ── Payments Out List ──
+  function renderPaymentsOutList() {
+    $pageTitle.textContent = 'Payment-Out';
+    $content.innerHTML = '<p class="loading">Loading...</p>';
+    api('GET', '/api/payments-out').then(function (res) {
+      var list = res.payments || [];
+      // Summary
+      var totalAmt = 0, paidAmt = 0;
+      list.forEach(function (p) { totalAmt += (p.amount || 0); });
+
+      var html = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">' +
+        '<h2 style="margin:0;font-size:1.1rem">Payment-Out</h2>' +
+        '<button class="btn btn-primary btn-sm" onclick="window.goTo(\'new-payment-out\')">+ Add Payment-Out</button></div>';
+      html += '<div class="stats-grid" style="margin-bottom:20px"><div class="stat-card">' +
+        '<div class="stat-label">Total Amount</div><div class="stat-value">' + formatINR(totalAmt) + '</div></div>' +
+        '<div class="stat-card"><div class="stat-label">Paid</div><div class="stat-value">' + formatINR(totalAmt) + '</div></div></div>';
+
+      if (!list.length) {
+        html += '<div style="text-align:center;padding:40px 20px">' +
+          '<svg width="64" height="64" fill="none" stroke="var(--text-muted)" stroke-width="1.5" viewBox="0 0 24 24" style="margin-bottom:16px"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>' +
+          '<h3 style="color:var(--text-muted)">No Transactions to show</h3>' +
+          '<p style="color:var(--text-muted)">You haven\'t added any transactions yet.</p>' +
+          '<button class="btn btn-primary" onclick="window.goTo(\'new-payment-out\')">+ Add Payment-Out</button></div>';
+        $content.innerHTML = html;
+        return;
+      }
+      html += '<div class="invoice-list">';
+      list.forEach(function (p) {
+        html += '<div class="payment-card">' +
+          '<div class="inv-row"><strong>' + esc(p.payment_number) + '</strong>' +
+          '<span class="payment-mode-badge">' + esc(p.payment_mode || 'cash') + '</span>' +
+          '<span class="payment-amount">' + formatINR(p.amount) + '</span></div>' +
+          '<div class="inv-row"><span>' + esc(p.party_name || 'Unknown') + '</span>' +
+          '<span style="color:var(--text-muted);font-size:0.85rem">' + formatDate(p.payment_date) + '</span></div>' +
+          '<div style="text-align:right;margin-top:4px"><button class="btn btn-sm btn-danger" onclick="event.stopPropagation();deletePaymentOut(\'' + p.id + '\')">Delete</button></div></div>';
+      });
+      html += '</div>';
+      $content.innerHTML = html;
+    }).catch(function () { $content.innerHTML = '<p class="text-danger">Failed to load payments</p>'; });
+  }
+
+  window.deletePaymentOut = function (id) {
+    if (!confirm('Delete this payment?')) return;
+    api('DELETE', '/api/payments-out/' + id).then(function (r) {
+      if (r.error) return showToast(r.error, 'error');
+      showToast('Payment deleted', 'success');
+      renderPaymentsOutList();
+    });
+  };
+
+  // ── New Payment Out Form ──
+  function renderNewPaymentOut() {
+    $pageTitle.textContent = 'New Payment-Out';
+    var today = new Date().toISOString().slice(0, 10);
+    var html = '<form id="payOutForm" class="form-card" onsubmit="return false">' +
+      '<div class="form-grid">' +
+      '<div class="form-group"><label>Party / Supplier Name *</label><div class="ac-wrap"><input id="poParty" class="form-control" placeholder="Type party name" autocomplete="off" required /><div class="ac-list" id="poPartyAC"></div></div></div>' +
+      '<div class="form-group"><label>Amount *</label><input id="poAmount" class="form-control" type="number" step="0.01" min="0" placeholder="0.00" required /></div>' +
+      '<div class="form-group"><label>Payment Date</label><input id="poDate" type="date" class="form-control" value="' + today + '" /></div>' +
+      '<div class="form-group"><label>Payment Mode</label><select id="poMode" class="form-control">' +
+      '<option value="cash">Cash</option><option value="bank">Bank Transfer</option><option value="upi">UPI</option><option value="cheque">Cheque</option><option value="card">Card</option></select></div>' +
+      '<div class="form-group"><label>Reference Number</label><input id="poRef" class="form-control" placeholder="Cheque / Txn #" /></div>' +
+      '<div class="form-group"><label>Notes</label><textarea id="poNotes" class="form-control" rows="2" placeholder="Notes"></textarea></div>' +
+      '</div>' +
+      '<div id="poUnpaidBills" style="margin-top:16px"></div>' +
+      '<div style="margin-top:18px;display:flex;gap:10px">' +
+      '<button type="button" class="btn btn-primary" id="poSaveBtn">Save Payment</button>' +
+      '<button type="button" class="btn btn-outline" onclick="window.goTo(\'payments-out\')">Cancel</button></div></form>';
+    $content.innerHTML = html;
+
+    // Party autocomplete
+    acSearch('poParty', 'poPartyAC', '/api/parties?q=', 'name', function (p) {
+      loadUnpaidPurchaseBills(p.name);
+    });
+
+    document.getElementById('poSaveBtn').addEventListener('click', function () {
+      var party = (document.getElementById('poParty').value || '').trim();
+      var amount = parseFloat(document.getElementById('poAmount').value);
+      if (!party) return showToast('Party name is required', 'error');
+      if (!amount || amount <= 0) return showToast('Amount must be greater than 0', 'error');
+      var selectedBill = document.querySelector('.bill-select-card.selected');
+      var body = {
+        party_name: party, amount: amount,
+        payment_date: document.getElementById('poDate').value,
+        payment_mode: document.getElementById('poMode').value,
+        reference_number: document.getElementById('poRef').value,
+        notes: document.getElementById('poNotes').value,
+        purchase_id: selectedBill ? selectedBill.getAttribute('data-id') : null
+      };
+      api('POST', '/api/payments-out', body).then(function (res) {
+        if (res.error) return showToast(res.error, 'error');
+        showToast(res.message || 'Payment saved!', 'success');
+        window.goTo('payments-out');
+      }).catch(function () { showToast('Failed to save payment', 'error'); });
+    });
+  }
+
+  function loadUnpaidPurchaseBills(partyName) {
+    var container = document.getElementById('poUnpaidBills');
+    if (!container) return;
+    container.innerHTML = '<p class="loading">Loading unpaid bills...</p>';
+    api('GET', '/api/purchase-docs/unpaid?party=' + encodeURIComponent(partyName)).then(function (res) {
+      var bills = res.documents || [];
+      if (!bills.length) { container.innerHTML = '<p style="color:var(--text-muted);font-size:0.875rem">No unpaid purchase bills for this party.</p>'; return; }
+      var html = '<label style="font-weight:600;margin-bottom:8px;display:block">Link to Purchase Bill (optional)</label><div class="bill-select-list">';
+      bills.forEach(function (b) {
+        var outstanding = (b.total || 0) - (b.amount_paid || 0);
+        html += '<div class="bill-select-card inv-select-card" data-id="' + b.id + '" data-outstanding="' + outstanding + '">' +
+          '<strong>' + esc(b.doc_number) + '</strong><span style="margin-left:8px">' + formatDate(b.doc_date) + '</span>' +
+          '<span class="inv-outstanding" style="margin-left:auto">' + formatINR(outstanding) + ' due</span></div>';
+      });
+      html += '</div>';
+      container.innerHTML = html;
+      container.querySelectorAll('.bill-select-card').forEach(function (card) {
+        card.addEventListener('click', function () {
+          container.querySelectorAll('.bill-select-card').forEach(function (c) { c.classList.remove('selected'); });
+          card.classList.toggle('selected');
+          var outstanding = parseFloat(card.getAttribute('data-outstanding')) || 0;
+          document.getElementById('poAmount').value = outstanding.toFixed(2);
+        });
+      });
+    }).catch(function () {
+      container.innerHTML = '<p style="color:var(--text-muted);font-size:0.875rem">Failed to load bills.</p>';
+    });
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // EXPENSES
+  // ═══════════════════════════════════════════════════════════
+
+  var EXPENSE_CATEGORIES = ['General','Rent','Utilities','Salary','Travel','Office Supplies','Marketing','Insurance','Maintenance','Internet & Phone','Legal & Professional','Food & Beverages','Fuel','Miscellaneous'];
+
+  function renderExpensesList() {
+    $pageTitle.textContent = 'Expenses';
+    $content.innerHTML = '<p class="loading">Loading...</p>';
+    api('GET', '/api/expenses').then(function (res) {
+      var list = res.expenses || [];
+      var totalAmt = 0;
+      list.forEach(function (e) { totalAmt += (e.amount || 0); });
+      var html = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">' +
+        '<h2 style="margin:0;font-size:1.1rem">Expenses (' + list.length + ')</h2>' +
+        '<button class="btn btn-primary btn-sm" onclick="window.goTo(\'new-expense\')">+ Add Expense</button></div>';
+      html += '<div class="stats-grid" style="margin-bottom:20px"><div class="stat-card">' +
+        '<div class="stat-label">Total Expenses</div><div class="stat-value">' + formatINR(totalAmt) + '</div></div></div>';
+      if (!list.length) {
+        html += '<div style="text-align:center;padding:40px 20px">' +
+          '<svg width="64" height="64" fill="none" stroke="var(--text-muted)" stroke-width="1.5" viewBox="0 0 24 24" style="margin-bottom:16px"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>' +
+          '<h3 style="color:var(--text-muted)">No Expenses</h3>' +
+          '<p style="color:var(--text-muted)">Track your business expenses here.</p>' +
+          '<button class="btn btn-primary" onclick="window.goTo(\'new-expense\')">+ Add Expense</button></div>';
+        $content.innerHTML = html;
+        return;
+      }
+      html += '<div class="invoice-list">';
+      list.forEach(function (e) {
+        html += '<div class="expense-card" onclick="window.goTo(\'expense\',\'' + e.id + '\')" style="cursor:pointer">' +
+          '<div class="inv-row"><strong>' + esc(e.expense_number) + '</strong>' +
+          '<span class="expense-cat-badge">' + esc(e.category || 'General') + '</span>' +
+          '<span class="payment-amount">' + formatINR(e.amount) + '</span></div>' +
+          '<div class="inv-row"><span>' + esc(e.description || e.party_name || '') + '</span>' +
+          '<span class="payment-mode-badge">' + esc(e.payment_mode || 'cash') + '</span>' +
+          '<span style="color:var(--text-muted);font-size:0.85rem">' + formatDate(e.expense_date) + '</span></div></div>';
+      });
+      html += '</div>';
+      $content.innerHTML = html;
+    }).catch(function () { $content.innerHTML = '<p class="text-danger">Failed to load expenses</p>'; });
+  }
+
+  function renderNewExpense() {
+    $pageTitle.textContent = 'New Expense';
+    var today = new Date().toISOString().slice(0, 10);
+    var catOpts = EXPENSE_CATEGORIES.map(function (c) { return '<option value="' + c + '">' + c + '</option>'; }).join('');
+    var html = '<form id="expenseForm" class="form-card" onsubmit="return false">' +
+      '<div class="form-grid">' +
+      '<div class="form-group"><label>Category *</label><select id="expCat" class="form-control">' + catOpts + '</select></div>' +
+      '<div class="form-group"><label>Amount *</label><input id="expAmount" class="form-control" type="number" step="0.01" min="0" placeholder="0.00" required /></div>' +
+      '<div class="form-group"><label>Date</label><input id="expDate" type="date" class="form-control" value="' + today + '" /></div>' +
+      '<div class="form-group"><label>Payment Mode</label><select id="expMode" class="form-control">' +
+      '<option value="cash">Cash</option><option value="bank">Bank Transfer</option><option value="upi">UPI</option><option value="cheque">Cheque</option><option value="card">Card</option></select></div>' +
+      '<div class="form-group"><label>Description</label><input id="expDesc" class="form-control" placeholder="What was this expense for?" /></div>' +
+      '<div class="form-group"><label>Party / Vendor</label><div class="ac-wrap"><input id="expParty" class="form-control" placeholder="Party name (optional)" autocomplete="off" /><div class="ac-list" id="expPartyAC"></div></div></div>' +
+      '<div class="form-group"><label>Reference Number</label><input id="expRef" class="form-control" placeholder="Bill / Txn #" /></div>' +
+      '<div class="form-group"><label>GST Applicable?</label><div style="display:flex;align-items:center;gap:10px"><input id="expGstCheck" type="checkbox" /><label for="expGstCheck" style="margin:0">Yes</label></div></div>' +
+      '<div class="form-group" id="expGstAmtWrap" style="display:none"><label>GST Amount</label><input id="expGstAmt" class="form-control" type="number" step="0.01" value="0" /></div>' +
+      '<div class="form-group" style="grid-column:1/-1"><label>Notes</label><textarea id="expNotes" class="form-control" rows="2" placeholder="Additional notes"></textarea></div>' +
+      '</div>' +
+      '<div style="margin-top:18px;display:flex;gap:10px">' +
+      '<button type="button" class="btn btn-primary" id="expSaveBtn">Save Expense</button>' +
+      '<button type="button" class="btn btn-outline" onclick="window.goTo(\'expenses-list\')">Cancel</button></div></form>';
+    $content.innerHTML = html;
+
+    // GST toggle
+    document.getElementById('expGstCheck').addEventListener('change', function () {
+      document.getElementById('expGstAmtWrap').style.display = this.checked ? '' : 'none';
+    });
+
+    // Party autocomplete
+    acSearch('expParty', 'expPartyAC', '/api/parties?q=', 'name', function () {});
+
+    document.getElementById('expSaveBtn').addEventListener('click', function () {
+      var amount = parseFloat(document.getElementById('expAmount').value);
+      if (!amount || amount <= 0) return showToast('Amount must be greater than 0', 'error');
+      var gstCheck = document.getElementById('expGstCheck').checked;
+      var body = {
+        category: document.getElementById('expCat').value,
+        amount: amount,
+        expense_date: document.getElementById('expDate').value,
+        payment_mode: document.getElementById('expMode').value,
+        description: document.getElementById('expDesc').value,
+        party_name: document.getElementById('expParty').value,
+        reference_number: document.getElementById('expRef').value,
+        gst_applicable: gstCheck,
+        gst_amount: gstCheck ? (parseFloat(document.getElementById('expGstAmt').value) || 0) : 0,
+        notes: document.getElementById('expNotes').value
+      };
+      api('POST', '/api/expenses', body).then(function (res) {
+        if (res.error) return showToast(res.error, 'error');
+        showToast(res.message || 'Expense saved!', 'success');
+        window.goTo('expenses-list');
+      }).catch(function () { showToast('Failed to save expense', 'error'); });
+    });
+  }
+
+  function renderExpenseDetail(id) {
+    $pageTitle.textContent = 'Expense Detail';
+    $content.innerHTML = '<p class="loading">Loading...</p>';
+    api('GET', '/api/expenses/' + id).then(function (res) {
+      if (res.error) { $content.innerHTML = '<p class="text-danger">' + esc(res.error) + '</p>'; return; }
+      var e = res.expense;
+      var html = '<div class="detail-actions" style="display:flex;gap:8px;margin-bottom:16px">' +
+        '<button class="btn btn-sm btn-outline" onclick="window.print()">Print</button>' +
+        '<button class="btn btn-sm btn-danger" id="expDeleteBtn">Delete</button></div>';
+      html += '<div class="print-doc" id="printArea">';
+      html += '<h2 style="margin-bottom:4px">Expense</h2>';
+      html += '<p><strong>#' + esc(e.expense_number) + '</strong></p>';
+      html += '<div class="form-grid" style="margin-top:16px">';
+      html += '<div><strong>Category:</strong> ' + esc(e.category || 'General') + '</div>';
+      html += '<div><strong>Amount:</strong> ' + formatINR(e.amount) + '</div>';
+      html += '<div><strong>Date:</strong> ' + formatDateSlash(e.expense_date) + '</div>';
+      html += '<div><strong>Payment Mode:</strong> ' + esc(e.payment_mode || 'cash') + '</div>';
+      if (e.description) html += '<div style="grid-column:1/-1"><strong>Description:</strong> ' + esc(e.description) + '</div>';
+      if (e.party_name) html += '<div><strong>Party:</strong> ' + esc(e.party_name) + '</div>';
+      if (e.reference_number) html += '<div><strong>Reference:</strong> ' + esc(e.reference_number) + '</div>';
+      if (e.gst_applicable) html += '<div><strong>GST Amount:</strong> ' + formatINR(e.gst_amount || 0) + '</div>';
+      if (e.notes) html += '<div style="grid-column:1/-1"><strong>Notes:</strong> ' + esc(e.notes) + '</div>';
+      html += '</div></div>';
+      $content.innerHTML = html;
+      document.getElementById('expDeleteBtn').addEventListener('click', function () {
+        if (!confirm('Delete this expense?')) return;
+        api('DELETE', '/api/expenses/' + id).then(function (r) {
+          if (r.error) return showToast(r.error, 'error');
+          showToast('Expense deleted', 'success');
+          window.goTo('expenses-list');
+        });
+      });
+    }).catch(function () { $content.innerHTML = '<p class="text-danger">Failed to load expense</p>'; });
   }
 
   // ── Reports ────────────────────────────────────────────────

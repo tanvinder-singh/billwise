@@ -4,7 +4,7 @@ const path = require('path');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const nodemailer = require('nodemailer');
-const { initDB, users, invoices, otps, parties, products, saleDocuments, paymentsIn } = require('./database');
+const { initDB, users, invoices, otps, parties, products, saleDocuments, paymentsIn, purchaseDocuments, paymentsOut, expenses } = require('./database');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -1022,6 +1022,255 @@ app.delete('/api/payments-in/:id', auth, async (req, res) => {
     console.error(e);
     res.status(500).json({ error: 'Failed to delete payment' });
   }
+});
+
+// ─── PURCHASE DOCUMENTS (purchase_bill, purchase_order, purchase_return) ──
+
+const PURCHASE_PREFIXES = { purchase_bill: 'PB', purchase_order: 'PO', purchase_return: 'PR' };
+const PURCHASE_TITLES = { purchase_bill: 'Purchase Bill', purchase_order: 'Purchase Order', purchase_return: 'Purchase Return' };
+
+// List
+app.get('/api/purchase-docs', auth, async (req, res) => {
+  try {
+    const docType = req.query.type || 'purchase_bill';
+    const list = await purchaseDocuments.find({ user_id: req.user.id, doc_type: docType }).sort({ created_at: -1 });
+    res.json({ documents: list });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Failed to fetch documents' }); }
+});
+
+// List unpaid purchase bills (for payment-out form) — must be before /:id
+app.get('/api/purchase-docs/unpaid', auth, async (req, res) => {
+  try {
+    const { pool } = require('./database');
+    const partyName = req.query.party || '';
+    let sql, params;
+    if (partyName) {
+      sql = `SELECT * FROM purchase_documents WHERE user_id = $1 AND doc_type = 'purchase_bill' AND status != 'paid' AND supplier_name ILIKE $2 ORDER BY created_at DESC`;
+      params = [req.user.id, '%' + partyName + '%'];
+    } else {
+      sql = `SELECT * FROM purchase_documents WHERE user_id = $1 AND doc_type = 'purchase_bill' AND status != 'paid' ORDER BY created_at DESC`;
+      params = [req.user.id];
+    }
+    const result = await pool.query(sql, params);
+    const list = result.rows.map(r => {
+      r._id = r.id;
+      ['subtotal','total','amount_paid','discount'].forEach(k => { if (r[k] !== undefined && r[k] !== null) r[k] = parseFloat(r[k]); });
+      if (typeof r.items === 'string') { try { r.items = JSON.parse(r.items); } catch(e) {} }
+      return r;
+    });
+    res.json({ documents: list });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Failed to fetch unpaid bills' }); }
+});
+
+// Get one
+app.get('/api/purchase-docs/:id', auth, async (req, res) => {
+  try {
+    const doc = await purchaseDocuments.findOne({ id: req.params.id, user_id: req.user.id });
+    if (!doc) return res.status(404).json({ error: 'Document not found' });
+    res.json({ document: doc });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Failed to fetch document' }); }
+});
+
+// Create
+app.post('/api/purchase-docs', auth, async (req, res) => {
+  try {
+    const {
+      doc_type, doc_date, due_date, supplier_name, supplier_phone, supplier_email,
+      supplier_address, supplier_gstin, supplier_state, place_of_supply, payment_terms,
+      items, subtotal, cgst, sgst, igst, total, round_off, discount,
+      notes, status, reference_id, reference_number
+    } = req.body;
+    if (!doc_type || !PURCHASE_PREFIXES[doc_type]) return res.status(400).json({ error: 'Invalid document type' });
+    if (!supplier_name) return res.status(400).json({ error: 'Supplier name is required' });
+
+    const { pool } = require('./database');
+    const now = new Date();
+    const prefix = PURCHASE_PREFIXES[doc_type];
+    const monthStr = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const countRes = await pool.query(
+      `SELECT COUNT(*) as cnt FROM purchase_documents WHERE user_id = $1 AND doc_type = $2 AND doc_number LIKE $3`,
+      [req.user.id, doc_type, `${prefix}-${monthStr}-%`]
+    );
+    const num = String(parseInt(countRes.rows[0].cnt) + 1).padStart(4, '0');
+    const doc_number = `${prefix}-${monthStr}-${num}`;
+
+    const doc = await purchaseDocuments.insert({
+      user_id: req.user.id, doc_type, doc_number,
+      doc_date: doc_date || now.toISOString().slice(0, 10),
+      due_date: due_date || null, supplier_name,
+      supplier_phone: supplier_phone || '', supplier_email: supplier_email || '',
+      supplier_address: supplier_address || '', supplier_gstin: supplier_gstin || '',
+      supplier_state: supplier_state || '', place_of_supply: place_of_supply || '',
+      payment_terms: payment_terms || '', items: items || [],
+      subtotal: subtotal || 0, cgst: cgst || 0, sgst: sgst || 0,
+      igst: igst || 0, total: total || 0, round_off: round_off || 0,
+      discount: discount || 0, amount_paid: 0,
+      status: status || 'unpaid', reference_id: reference_id || null,
+      reference_number: reference_number || '', notes: notes || '', created_at: now
+    });
+    res.json({ document: doc, message: PURCHASE_TITLES[doc_type] + ' ' + doc_number + ' created!' });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Failed to create document' }); }
+});
+
+// Update
+app.put('/api/purchase-docs/:id', auth, async (req, res) => {
+  try {
+    const allowed = ['doc_date','due_date','supplier_name','supplier_phone','supplier_email',
+      'supplier_address','supplier_gstin','supplier_state','place_of_supply','payment_terms',
+      'items','subtotal','cgst','sgst','igst','total','round_off','discount','amount_paid',
+      'notes','status','reference_id','reference_number'];
+    const setData = {};
+    allowed.forEach(k => { if (req.body[k] !== undefined) setData[k] = req.body[k]; });
+    await purchaseDocuments.update({ id: req.params.id, user_id: req.user.id }, { $set: setData });
+    const doc = await purchaseDocuments.findOne({ id: req.params.id });
+    res.json({ document: doc, message: 'Document updated' });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Failed to update document' }); }
+});
+
+// Delete
+app.delete('/api/purchase-docs/:id', auth, async (req, res) => {
+  try {
+    const removed = await purchaseDocuments.remove({ id: req.params.id, user_id: req.user.id });
+    if (removed === 0) return res.status(404).json({ error: 'Document not found' });
+    res.json({ message: 'Document deleted' });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Failed to delete document' }); }
+});
+
+// Mark purchase bill as paid
+app.patch('/api/purchase-docs/:id', auth, async (req, res) => {
+  try {
+    const { status, amount_paid } = req.body;
+    await purchaseDocuments.update({ id: req.params.id, user_id: req.user.id },
+      { $set: { status: status || 'unpaid', amount_paid: amount_paid || 0 } });
+    const doc = await purchaseDocuments.findOne({ id: req.params.id });
+    if (!doc) return res.status(404).json({ error: 'Document not found' });
+    res.json({ document: doc, message: 'Document updated' });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Failed to update document' }); }
+});
+
+// ─── PAYMENTS OUT ───────────────────────────────────────────
+
+app.get('/api/payments-out', auth, async (req, res) => {
+  try {
+    const list = await paymentsOut.find({ user_id: req.user.id }).sort({ created_at: -1 });
+    res.json({ payments: list });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Failed to fetch payments' }); }
+});
+
+app.post('/api/payments-out', auth, async (req, res) => {
+  try {
+    const { purchase_id, party_name, party_id, amount, payment_date, payment_mode, reference_number, notes } = req.body;
+    if (!amount || amount <= 0) return res.status(400).json({ error: 'Amount must be greater than 0' });
+
+    const now = new Date();
+    const monthStr = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const count = await paymentsOut.count({ user_id: req.user.id });
+    const num = String(count + 1).padStart(4, '0');
+    const payment_number = `POUT-${monthStr}-${num}`;
+
+    const pay = await paymentsOut.insert({
+      user_id: req.user.id, payment_number, purchase_id: purchase_id || null,
+      party_name: party_name || '', party_id: party_id || null,
+      amount, payment_date: payment_date || now.toISOString().slice(0, 10),
+      payment_mode: payment_mode || 'cash', reference_number: reference_number || '',
+      notes: notes || '', created_at: now
+    });
+
+    // Update purchase bill amount_paid if linked
+    if (purchase_id) {
+      const pdoc = await purchaseDocuments.findOne({ id: purchase_id, user_id: req.user.id });
+      if (pdoc) {
+        const newPaid = (pdoc.amount_paid || 0) + parseFloat(amount);
+        const newStatus = newPaid >= pdoc.total ? 'paid' : 'partial';
+        await purchaseDocuments.update({ id: purchase_id }, {
+          $set: { amount_paid: Math.round(newPaid * 100) / 100, status: newStatus }
+        });
+      }
+    }
+    res.json({ payment: pay, message: 'Payment ' + payment_number + ' recorded!' });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Failed to record payment' }); }
+});
+
+app.delete('/api/payments-out/:id', auth, async (req, res) => {
+  try {
+    const pay = await paymentsOut.findOne({ id: req.params.id, user_id: req.user.id });
+    if (!pay) return res.status(404).json({ error: 'Payment not found' });
+    if (pay.purchase_id) {
+      const pdoc = await purchaseDocuments.findOne({ id: pay.purchase_id, user_id: req.user.id });
+      if (pdoc) {
+        const newPaid = Math.max(0, (pdoc.amount_paid || 0) - (pay.amount || 0));
+        const newStatus = newPaid <= 0 ? 'unpaid' : (newPaid >= pdoc.total ? 'paid' : 'partial');
+        await purchaseDocuments.update({ id: pay.purchase_id }, {
+          $set: { amount_paid: Math.round(newPaid * 100) / 100, status: newStatus }
+        });
+      }
+    }
+    await paymentsOut.remove({ id: req.params.id, user_id: req.user.id });
+    res.json({ message: 'Payment deleted' });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Failed to delete payment' }); }
+});
+
+
+// ─── EXPENSES ───────────────────────────────────────────────
+
+app.get('/api/expenses', auth, async (req, res) => {
+  try {
+    const list = await expenses.find({ user_id: req.user.id }).sort({ created_at: -1 });
+    res.json({ expenses: list });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Failed to fetch expenses' }); }
+});
+
+app.get('/api/expenses/:id', auth, async (req, res) => {
+  try {
+    const exp = await expenses.findOne({ id: req.params.id, user_id: req.user.id });
+    if (!exp) return res.status(404).json({ error: 'Expense not found' });
+    res.json({ expense: exp });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Failed to fetch expense' }); }
+});
+
+app.post('/api/expenses', auth, async (req, res) => {
+  try {
+    const { expense_date, category, description, amount, payment_mode, reference_number,
+            party_name, gst_applicable, gst_amount, notes } = req.body;
+    if (!amount || amount <= 0) return res.status(400).json({ error: 'Amount must be greater than 0' });
+
+    const now = new Date();
+    const monthStr = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const count = await expenses.count({ user_id: req.user.id });
+    const num = String(count + 1).padStart(4, '0');
+    const expense_number = `EXP-${monthStr}-${num}`;
+
+    const exp = await expenses.insert({
+      user_id: req.user.id, expense_number,
+      expense_date: expense_date || now.toISOString().slice(0, 10),
+      category: category || 'General', description: description || '',
+      amount, payment_mode: payment_mode || 'cash',
+      reference_number: reference_number || '', party_name: party_name || '',
+      gst_applicable: gst_applicable || false, gst_amount: gst_amount || 0,
+      notes: notes || '', created_at: now
+    });
+    res.json({ expense: exp, message: 'Expense ' + expense_number + ' recorded!' });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Failed to record expense' }); }
+});
+
+app.put('/api/expenses/:id', auth, async (req, res) => {
+  try {
+    const allowed = ['expense_date','category','description','amount','payment_mode',
+      'reference_number','party_name','gst_applicable','gst_amount','notes'];
+    const setData = {};
+    allowed.forEach(k => { if (req.body[k] !== undefined) setData[k] = req.body[k]; });
+    await expenses.update({ id: req.params.id, user_id: req.user.id }, { $set: setData });
+    const exp = await expenses.findOne({ id: req.params.id });
+    res.json({ expense: exp, message: 'Expense updated' });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Failed to update expense' }); }
+});
+
+app.delete('/api/expenses/:id', auth, async (req, res) => {
+  try {
+    const removed = await expenses.remove({ id: req.params.id, user_id: req.user.id });
+    if (removed === 0) return res.status(404).json({ error: 'Expense not found' });
+    res.json({ message: 'Expense deleted' });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Failed to delete expense' }); }
 });
 
 // ─── REPORTS ────────────────────────────────────────────────
