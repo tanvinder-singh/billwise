@@ -4,7 +4,7 @@ const path = require('path');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const nodemailer = require('nodemailer');
-const { initDB, users, invoices, otps, parties, products } = require('./database');
+const { initDB, users, invoices, otps, parties, products, saleDocuments, paymentsIn } = require('./database');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -625,6 +625,35 @@ app.get('/api/invoices', auth, async (req, res) => {
   res.json({ invoices: list });
 });
 
+// List unpaid/partial invoices (for payment-in form) — must be before /:id
+app.get('/api/invoices/unpaid', auth, async (req, res) => {
+  try {
+    const { pool } = require('./database');
+    const partyName = req.query.party || '';
+    let sql, params;
+    if (partyName) {
+      sql = `SELECT * FROM invoices WHERE user_id = $1 AND status != 'paid' AND customer_name ILIKE $2 ORDER BY created_at DESC`;
+      params = [req.user.id, '%' + partyName + '%'];
+    } else {
+      sql = `SELECT * FROM invoices WHERE user_id = $1 AND status != 'paid' ORDER BY created_at DESC`;
+      params = [req.user.id];
+    }
+    const result = await pool.query(sql, params);
+    const list = result.rows.map(r => {
+      r._id = r.id;
+      ['subtotal','total','amount_paid','discount'].forEach(k => {
+        if (r[k] !== undefined && r[k] !== null) r[k] = parseFloat(r[k]);
+      });
+      if (typeof r.items === 'string') { try { r.items = JSON.parse(r.items); } catch(e) {} }
+      return r;
+    });
+    res.json({ invoices: list });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Failed to fetch unpaid invoices' });
+  }
+});
+
 // Create
 app.post('/api/invoices', auth, async (req, res) => {
   try {
@@ -713,6 +742,286 @@ app.delete('/api/invoices/:id', auth, async (req, res) => {
   const removed = await invoices.remove({ id: req.params.id, user_id: req.user.id });
   if (removed === 0) return res.status(404).json({ error: 'Invoice not found' });
   res.json({ message: 'Invoice deleted' });
+});
+
+// ─── SALE DOCUMENTS (estimates, proforma, challan, sale_return) ──
+
+// Prefix map for doc numbering
+const DOC_PREFIXES = { estimate: 'EST', proforma: 'PI', challan: 'DC', sale_return: 'SR' };
+const DOC_TITLES = { estimate: 'Estimate', proforma: 'Proforma Invoice', challan: 'Delivery Challan', sale_return: 'Credit Note' };
+
+// List sale documents by type
+app.get('/api/sale-docs', auth, async (req, res) => {
+  try {
+    const docType = req.query.type || 'estimate';
+    const list = await saleDocuments.find({ user_id: req.user.id, doc_type: docType }).sort({ created_at: -1 });
+    res.json({ documents: list });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Failed to fetch documents' });
+  }
+});
+
+// Get single sale document
+app.get('/api/sale-docs/:id', auth, async (req, res) => {
+  try {
+    const doc = await saleDocuments.findOne({ id: req.params.id, user_id: req.user.id });
+    if (!doc) return res.status(404).json({ error: 'Document not found' });
+    res.json({ document: doc });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Failed to fetch document' });
+  }
+});
+
+// Create sale document
+app.post('/api/sale-docs', auth, async (req, res) => {
+  try {
+    const {
+      doc_type, doc_date, due_date, customer_name, customer_phone, customer_email,
+      customer_address, customer_gstin, customer_state, place_of_supply, payment_terms,
+      items, subtotal, cgst, sgst, igst, total, round_off, total_mrp, discount,
+      notes, status, reference_id, reason
+    } = req.body;
+
+    if (!doc_type || !DOC_PREFIXES[doc_type]) {
+      return res.status(400).json({ error: 'Invalid document type' });
+    }
+    if (!customer_name || !items || !items.length) {
+      return res.status(400).json({ error: 'Customer name and at least one item are required' });
+    }
+
+    // Auto-generate doc number
+    const { pool } = require('./database');
+    const now = new Date();
+    const prefix = DOC_PREFIXES[doc_type];
+    const monthStr = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const countRes = await pool.query(
+      `SELECT COUNT(*) as cnt FROM sale_documents WHERE user_id = $1 AND doc_type = $2 AND doc_number LIKE $3`,
+      [req.user.id, doc_type, `${prefix}-${monthStr}-%`]
+    );
+    const num = String(parseInt(countRes.rows[0].cnt) + 1).padStart(4, '0');
+    const doc_number = `${prefix}-${monthStr}-${num}`;
+
+    const doc = await saleDocuments.insert({
+      user_id: req.user.id, doc_type, doc_number,
+      doc_date: doc_date || now.toISOString().slice(0, 10),
+      due_date: due_date || null,
+      customer_name, customer_phone: customer_phone || '', customer_email: customer_email || '',
+      customer_address: customer_address || '', customer_gstin: customer_gstin || '',
+      customer_state: customer_state || '', place_of_supply: place_of_supply || '',
+      payment_terms: payment_terms || '',
+      items, subtotal: subtotal || 0, cgst: cgst || 0, sgst: sgst || 0,
+      igst: igst || 0, total: total || 0, round_off: round_off || 0,
+      total_mrp: total_mrp || 0, discount: discount || 0,
+      status: status || 'draft', reference_id: reference_id || null,
+      reason: reason || '', notes: notes || '',
+      created_at: now
+    });
+
+    res.json({ document: doc, message: DOC_TITLES[doc_type] + ' ' + doc_number + ' created!' });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Failed to create document' });
+  }
+});
+
+// Update sale document
+app.put('/api/sale-docs/:id', auth, async (req, res) => {
+  try {
+    const {
+      doc_date, due_date, customer_name, customer_phone, customer_email,
+      customer_address, customer_gstin, customer_state, place_of_supply, payment_terms,
+      items, subtotal, cgst, sgst, igst, total, round_off, total_mrp, discount,
+      notes, status, reference_id, reason
+    } = req.body;
+
+    const setData = {};
+    if (doc_date !== undefined) setData.doc_date = doc_date;
+    if (due_date !== undefined) setData.due_date = due_date;
+    if (customer_name !== undefined) setData.customer_name = customer_name;
+    if (customer_phone !== undefined) setData.customer_phone = customer_phone;
+    if (customer_email !== undefined) setData.customer_email = customer_email;
+    if (customer_address !== undefined) setData.customer_address = customer_address;
+    if (customer_gstin !== undefined) setData.customer_gstin = customer_gstin;
+    if (customer_state !== undefined) setData.customer_state = customer_state;
+    if (place_of_supply !== undefined) setData.place_of_supply = place_of_supply;
+    if (payment_terms !== undefined) setData.payment_terms = payment_terms;
+    if (items !== undefined) setData.items = items;
+    if (subtotal !== undefined) setData.subtotal = subtotal;
+    if (cgst !== undefined) setData.cgst = cgst;
+    if (sgst !== undefined) setData.sgst = sgst;
+    if (igst !== undefined) setData.igst = igst;
+    if (total !== undefined) setData.total = total;
+    if (round_off !== undefined) setData.round_off = round_off;
+    if (total_mrp !== undefined) setData.total_mrp = total_mrp;
+    if (discount !== undefined) setData.discount = discount;
+    if (notes !== undefined) setData.notes = notes;
+    if (status !== undefined) setData.status = status;
+    if (reference_id !== undefined) setData.reference_id = reference_id;
+    if (reason !== undefined) setData.reason = reason;
+
+    await saleDocuments.update({ id: req.params.id, user_id: req.user.id }, { $set: setData });
+    const doc = await saleDocuments.findOne({ id: req.params.id });
+    res.json({ document: doc, message: 'Document updated' });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Failed to update document' });
+  }
+});
+
+// Delete sale document
+app.delete('/api/sale-docs/:id', auth, async (req, res) => {
+  try {
+    const removed = await saleDocuments.remove({ id: req.params.id, user_id: req.user.id });
+    if (removed === 0) return res.status(404).json({ error: 'Document not found' });
+    res.json({ message: 'Document deleted' });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Failed to delete document' });
+  }
+});
+
+// Convert sale document to invoice
+app.post('/api/sale-docs/:id/convert', auth, async (req, res) => {
+  try {
+    const doc = await saleDocuments.findOne({ id: req.params.id, user_id: req.user.id });
+    if (!doc) return res.status(404).json({ error: 'Document not found' });
+    if (doc.status === 'converted') return res.status(400).json({ error: 'Already converted to invoice' });
+
+    // Generate invoice number
+    const count = await invoices.count({ user_id: req.user.id });
+    const now = new Date();
+    const invPrefix = `INV-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const invNum = String(count + 1).padStart(4, '0');
+    const invoice_number = `${invPrefix}-${invNum}`;
+
+    // Create invoice from document data
+    const inv = await invoices.insert({
+      user_id: req.user.id, invoice_number,
+      invoice_date: now.toISOString().slice(0, 10),
+      due_date: doc.due_date || '',
+      customer_name: doc.customer_name,
+      customer_phone: doc.customer_phone || '',
+      customer_email: doc.customer_email || '',
+      customer_address: doc.customer_address || '',
+      customer_gstin: doc.customer_gstin || '',
+      customer_state: doc.customer_state || '',
+      place_of_supply: doc.place_of_supply || '',
+      items: doc.items || [],
+      subtotal: doc.subtotal || 0, cgst: doc.cgst || 0, sgst: doc.sgst || 0,
+      igst: doc.igst || 0, total: doc.total || 0, round_off: doc.round_off || 0,
+      total_mrp: doc.total_mrp || 0, discount: doc.discount || 0,
+      amount_paid: 0, notes: doc.notes || '', status: 'unpaid',
+      created_at: now
+    });
+
+    // Mark document as converted
+    await saleDocuments.update({ id: doc.id }, {
+      $set: { status: 'converted', reference_id: inv.id }
+    });
+
+    res.json({ invoice: inv, message: 'Converted to Invoice ' + invoice_number + '!' });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Failed to convert document' });
+  }
+});
+
+// ─── PAYMENTS IN ────────────────────────────────────────────
+
+// List all payments-in
+app.get('/api/payments-in', auth, async (req, res) => {
+  try {
+    const list = await paymentsIn.find({ user_id: req.user.id }).sort({ created_at: -1 });
+    res.json({ payments: list });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Failed to fetch payments' });
+  }
+});
+
+// Get single payment
+app.get('/api/payments-in/:id', auth, async (req, res) => {
+  try {
+    const pay = await paymentsIn.findOne({ id: req.params.id, user_id: req.user.id });
+    if (!pay) return res.status(404).json({ error: 'Payment not found' });
+    res.json({ payment: pay });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Failed to fetch payment' });
+  }
+});
+
+// Record payment-in (also updates invoice)
+app.post('/api/payments-in', auth, async (req, res) => {
+  try {
+    const { invoice_id, party_name, party_id, amount, payment_date, payment_mode, reference_number, notes } = req.body;
+    if (!amount || amount <= 0) return res.status(400).json({ error: 'Amount must be greater than 0' });
+
+    // Auto-generate payment number
+    const now = new Date();
+    const monthStr = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const count = await paymentsIn.count({ user_id: req.user.id });
+    const num = String(count + 1).padStart(4, '0');
+    const payment_number = `PAY-${monthStr}-${num}`;
+
+    const pay = await paymentsIn.insert({
+      user_id: req.user.id, payment_number,
+      invoice_id: invoice_id || null,
+      party_name: party_name || '',
+      party_id: party_id || null,
+      amount: amount,
+      payment_date: payment_date || now.toISOString().slice(0, 10),
+      payment_mode: payment_mode || 'cash',
+      reference_number: reference_number || '',
+      notes: notes || '',
+      created_at: now
+    });
+
+    // Update invoice amount_paid and status if invoice_id provided
+    if (invoice_id) {
+      const inv = await invoices.findOne({ id: invoice_id, user_id: req.user.id });
+      if (inv) {
+        const newPaid = (inv.amount_paid || 0) + parseFloat(amount);
+        const newStatus = newPaid >= inv.total ? 'paid' : 'partial';
+        await invoices.update({ id: invoice_id }, {
+          $set: { amount_paid: Math.round(newPaid * 100) / 100, status: newStatus }
+        });
+      }
+    }
+
+    res.json({ payment: pay, message: 'Payment ' + payment_number + ' recorded!' });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Failed to record payment' });
+  }
+});
+
+// Delete payment-in (reverses invoice amount_paid)
+app.delete('/api/payments-in/:id', auth, async (req, res) => {
+  try {
+    const pay = await paymentsIn.findOne({ id: req.params.id, user_id: req.user.id });
+    if (!pay) return res.status(404).json({ error: 'Payment not found' });
+
+    // Reverse invoice amount_paid
+    if (pay.invoice_id) {
+      const inv = await invoices.findOne({ id: pay.invoice_id, user_id: req.user.id });
+      if (inv) {
+        const newPaid = Math.max(0, (inv.amount_paid || 0) - (pay.amount || 0));
+        const newStatus = newPaid <= 0 ? 'unpaid' : (newPaid >= inv.total ? 'paid' : 'partial');
+        await invoices.update({ id: pay.invoice_id }, {
+          $set: { amount_paid: Math.round(newPaid * 100) / 100, status: newStatus }
+        });
+      }
+    }
+
+    await paymentsIn.remove({ id: req.params.id, user_id: req.user.id });
+    res.json({ message: 'Payment deleted and invoice updated' });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Failed to delete payment' });
+  }
 });
 
 // ─── REPORTS ────────────────────────────────────────────────

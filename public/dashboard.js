@@ -38,6 +38,12 @@
     });
     var activeBtn = document.querySelector('.nav-item[data-page="' + page + '"]');
     if (activeBtn) activeBtn.classList.add('active');
+    // Auto-open Sale group if a sub-item inside it is selected
+    var salePages = ['new-invoice','invoices','estimates','new-estimate','estimate','proformas','new-proforma','proforma','payments-in','new-payment-in','challans','new-challan','challan','sale-returns','new-sale-return','sale-return'];
+    var saleGroup = document.getElementById('saleNavGroup');
+    if (saleGroup) {
+      if (salePages.indexOf(page) !== -1) saleGroup.classList.add('open');
+    }
     $sidebar.classList.remove('open');
     $overlay.classList.remove('active');
     try {
@@ -52,6 +58,20 @@
         case 'new-invoice': renderNewInvoice(); break;
         case 'invoices':    renderInvoiceList(); break;
         case 'invoice':     renderInvoiceDetail(param); break;
+        case 'estimates':    renderSaleDocList('estimate'); break;
+        case 'new-estimate': renderSaleDocForm('estimate'); break;
+        case 'estimate':     renderSaleDocDetail('estimate', param); break;
+        case 'proformas':    renderSaleDocList('proforma'); break;
+        case 'new-proforma': renderSaleDocForm('proforma'); break;
+        case 'proforma':     renderSaleDocDetail('proforma', param); break;
+        case 'challans':     renderSaleDocList('challan'); break;
+        case 'new-challan':  renderSaleDocForm('challan'); break;
+        case 'challan':      renderSaleDocDetail('challan', param); break;
+        case 'sale-returns':    renderSaleDocList('sale_return'); break;
+        case 'new-sale-return': renderSaleDocForm('sale_return'); break;
+        case 'sale-return':     renderSaleDocDetail('sale_return', param); break;
+        case 'payments-in':    renderPaymentsInList(); break;
+        case 'new-payment-in': renderNewPaymentIn(); break;
         case 'reports':     renderReports(); break;
         case 'admin':       renderAdmin(); break;
         case 'settings':    renderSettings(); break;
@@ -202,7 +222,7 @@
       clearTimeout(_acTimers[endpoint + input.id]);
       _acTimers[endpoint + input.id] = setTimeout(function () {
         api('GET', endpoint + '?q=' + encodeURIComponent(q)).then(function (res) {
-          _data = res.parties || res.products || [];
+          _data = res.parties || res.products || res.invoices || res.documents || res.payments || [];
           if (!_data.length) { dropdown.classList.remove('open'); return; }
           dropdown.innerHTML = _data.map(function (d, i) {
             return '<div class="ac-item" data-idx="' + i + '">' + renderFn(d, q) + '</div>';
@@ -260,6 +280,14 @@
   document.getElementById('logoutBtn').addEventListener('click', function (e) { e.preventDefault(); logout(); });
   $menuBtn.addEventListener('click', function () { $sidebar.classList.toggle('open'); $overlay.classList.toggle('active'); });
   $overlay.addEventListener('click', function () { $sidebar.classList.remove('open'); $overlay.classList.remove('active'); });
+
+  // Sale nav-group toggle
+  var saleGroupToggle = document.getElementById('saleGroupToggle');
+  if (saleGroupToggle) {
+    saleGroupToggle.addEventListener('click', function () {
+      document.getElementById('saleNavGroup').classList.toggle('open');
+    });
+  }
 
   // ═══════════════════════════════════════════════════════════
   // VIEWS
@@ -1880,6 +1908,756 @@
     }).catch(function () {
       showToast('Failed to create invoice', 'error');
       if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Save'; }
+    });
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // SALE DOCUMENTS (Estimates, Proforma, Challans, Sale Returns)
+  // ═══════════════════════════════════════════════════════════
+
+  var SALE_DOC_META = {
+    estimate:    { title: 'Estimate / Quotation', plural: 'Estimates', listPage: 'estimates',    createPage: 'new-estimate',    detailPage: 'estimate',    prefix: 'EST',  printTitle: 'Estimate',          canConvert: true,  dueDateLabel: 'Valid Until',      extraFields: [] },
+    proforma:    { title: 'Proforma Invoice',     plural: 'Proforma Invoices', listPage: 'proformas', createPage: 'new-proforma', detailPage: 'proforma', prefix: 'PI',   printTitle: 'Proforma Invoice',  canConvert: true,  dueDateLabel: 'Due Date',         extraFields: [] },
+    challan:     { title: 'Delivery Challan',     plural: 'Delivery Challans', listPage: 'challans',  createPage: 'new-challan',  detailPage: 'challan',  prefix: 'DC',   printTitle: 'Delivery Challan',  canConvert: true,  dueDateLabel: 'Date',             extraFields: [] },
+    sale_return: { title: 'Sale Return / Cr. Note', plural: 'Sale Returns', listPage: 'sale-returns', createPage: 'new-sale-return', detailPage: 'sale-return', prefix: 'SR', printTitle: 'Credit Note', canConvert: false, dueDateLabel: 'Date', extraFields: ['reason','reference_id'] }
+  };
+
+  function saleDocStatusBadge(s) {
+    var map = {
+      draft: 'draft', sent: 'sent', accepted: 'accepted', rejected: 'rejected',
+      converted: 'converted', expired: 'expired', delivered: 'delivered', refunded: 'refunded'
+    };
+    var cls = map[s] || 'draft';
+    return '<span class="badge badge-' + cls + '">' + (s || 'draft').charAt(0).toUpperCase() + (s || 'draft').slice(1) + '</span>';
+  }
+
+  // ── Shared List Page ──
+  function renderSaleDocList(docType) {
+    var meta = SALE_DOC_META[docType];
+    $pageTitle.textContent = meta.plural;
+    $content.innerHTML = '<p style="color:var(--text-muted)">Loading...</p>';
+    api('GET', '/api/sale-docs?type=' + docType).then(function (data) {
+      var list = data.documents || [];
+      var html = '<div class="page-actions">' +
+        '<div class="page-search"><svg width="16" height="16" fill="none" stroke="var(--text-muted)" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>' +
+        '<input id="sdSearch" placeholder="Search ' + meta.plural.toLowerCase() + '..." autocomplete="off"></div>' +
+        '<button type="button" class="btn btn-primary btn-sm" onclick="window.goTo(\'' + meta.createPage + '\')">+ New ' + meta.title.split('/')[0].trim() + '</button></div>';
+      html += '<div class="table-card"><div class="table-header"><h3>' + meta.plural + ' (' + list.length + ')</h3></div>';
+      if (list.length) {
+        html += '<div class="table-wrap"><table><thead><tr>' +
+          '<th>' + meta.prefix + ' #</th><th>Date</th><th>Customer</th><th class="text-right">Amount</th><th>Status</th></tr></thead><tbody>';
+        list.forEach(function (doc) {
+          var docId = doc.id || doc._id;
+          var badge = saleDocStatusBadge(doc.status);
+          // Check expired for estimates
+          if (docType === 'estimate' && doc.due_date && (doc.status === 'draft' || doc.status === 'sent')) {
+            var today = new Date().toISOString().slice(0, 10);
+            if (doc.due_date < today) badge = saleDocStatusBadge('expired');
+          }
+          html += '<tr style="cursor:pointer" onclick="window.goTo(\'' + meta.detailPage + '\',\'' + docId + '\')">' +
+            '<td><strong>' + doc.doc_number + '</strong></td><td>' + formatDate(doc.doc_date) + '</td>' +
+            '<td>' + (doc.customer_name || '-') + '</td><td class="text-right">' + formatINR(doc.total || 0) + '</td>' +
+            '<td>' + badge + '</td></tr>';
+        });
+        html += '</tbody></table></div>';
+      } else {
+        html += '<div class="empty-state">No ' + meta.plural.toLowerCase() + ' yet. <button type="button" onclick="window.goTo(\'' + meta.createPage + '\')" style="color:var(--primary);background:none;border:none;cursor:pointer;font:inherit;font-weight:600;text-decoration:underline">Create one now!</button></div>';
+      }
+      html += '</div>';
+      $content.innerHTML = html;
+      // Search filter
+      var searchInput = document.getElementById('sdSearch');
+      if (searchInput) {
+        searchInput.addEventListener('input', function () {
+          var q = this.value.toLowerCase();
+          var rows = $content.querySelectorAll('tbody tr');
+          rows.forEach(function (row) { row.style.display = row.textContent.toLowerCase().indexOf(q) !== -1 ? '' : 'none'; });
+        });
+      }
+    }).catch(function () {
+      $content.innerHTML = '<div class="empty-state">Failed to load ' + meta.plural.toLowerCase() + '.</div>';
+    });
+  }
+
+  // ── Shared Create Form ──
+  var saleDocItemCounter = 0;
+  function renderSaleDocForm(docType) {
+    var meta = SALE_DOC_META[docType];
+    $pageTitle.textContent = 'New ' + meta.title;
+    var today = new Date().toISOString().slice(0, 10);
+    var bizName = currentUser ? (currentUser.business_name || currentUser.name || 'Rupiya') : 'Rupiya';
+
+    var html = '<form id="saleDocForm" novalidate>';
+    // Header
+    html += '<div class="sale-header">' +
+      '<div class="sale-header-left"><h2 class="sale-title">' + esc(meta.title) + '</h2></div>' +
+      '<div class="sale-biz"><span class="user-avatar" style="width:30px;height:30px;font-size:0.75rem">' + bizName.charAt(0).toUpperCase() + '</span> ' + esc(bizName) + '</div></div>';
+
+    // Top: Customer (left) + Details (right)
+    html += '<div class="sale-top"><div class="sale-customer">' +
+      '<div class="form-group"><label>Customer *</label><div class="ac-wrap"><input id="sdCName" placeholder="Search or select customer" autocomplete="off"><div class="ac-dropdown" id="sdCNameAc"></div></div></div>' +
+      '<div class="form-group"><label>Phone No.</label><input id="sdCPhone" placeholder="Phone number"></div>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">' +
+        '<div class="form-group"><label>Email</label><input id="sdCEmail" type="email" placeholder="Email"></div>' +
+        '<div class="form-group"><label>GSTIN</label><input id="sdCGstin" placeholder="GSTIN" maxlength="15" style="text-transform:uppercase"></div></div>' +
+      '<div class="form-group"><label>Address</label><input id="sdCAddress" placeholder="Address"></div>' +
+      '<div class="form-group"><label>State</label><select id="sdCState">' + stateOptions('') + '</select></div>';
+
+    // Sale return: invoice reference selector
+    if (docType === 'sale_return') {
+      html += '<div class="form-group"><label>Original Invoice #</label><div class="ac-wrap"><input id="sdRefInvoice" placeholder="Search invoice number..." autocomplete="off"><div class="ac-dropdown" id="sdRefInvoiceAc"></div></div></div>';
+      html += '<div class="form-group"><label>Reason for Return</label><input id="sdReason" placeholder="Reason for return/credit note"></div>';
+    }
+    html += '</div>';
+
+    html += '<div class="sale-details">' +
+      '<div class="detail-row"><span class="detail-label">' + meta.prefix + ' Number</span><span class="detail-value">Auto</span></div>' +
+      '<div class="detail-row"><span class="detail-label">Date</span><input id="sdDate" type="date" value="' + today + '"></div>';
+    if (docType !== 'sale_return') {
+      html += '<div class="detail-row"><span class="detail-label">' + meta.dueDateLabel + '</span><input id="sdDueDate" type="date" value="' + today + '"></div>';
+    }
+    html += '<div class="detail-row"><span class="detail-label">State of supply</span><select id="sdPosState">' + stateOptions(currentUser ? currentUser.state : '') + '</select></div>' +
+    '</div></div>';
+
+    // Items table
+    html += '<div class="sale-items"><div class="table-wrap"><table class="items-table" style="min-width:1100px"><thead><tr>' +
+      '<th style="width:15%">Item Name</th><th style="width:7%">HSN</th>' +
+      '<th style="width:6%">Size</th><th style="width:7%">MRP</th>' +
+      '<th style="width:5%">Qty</th><th style="width:7%">Unit</th>' +
+      '<th style="width:8%">Price/Unit</th><th style="width:5%">Disc%</th><th style="width:7%">Disc\u20B9</th>' +
+      '<th style="width:6%">GST%</th><th style="width:7%">GST\u20B9</th><th style="width:8%">Amount</th><th style="width:30px"></th>' +
+    '</tr></thead><tbody id="sdItemsBody"></tbody></table></div>' +
+    '<div class="sale-items-actions"><button type="button" class="btn btn-outline btn-sm" id="sdAddItemBtn">+ Add Item</button></div></div>';
+
+    // Bottom: Notes + Totals
+    html += '<div class="sale-bottom"><div class="sale-notes">' +
+      '<textarea id="sdNotes" placeholder="Add notes..."></textarea></div>' +
+      '<div class="sale-totals"><table class="summary-table">' +
+        '<tr><td>Subtotal</td><td id="sdSumSubtotal">\u20B90.00</td></tr>' +
+        '<tr><td>Discount</td><td id="sdSumDiscount">-\u20B90.00</td></tr>' +
+        '<tr id="sdRowCgst"><td>CGST</td><td id="sdSumCgst">\u20B90.00</td></tr>' +
+        '<tr id="sdRowSgst"><td>SGST</td><td id="sdSumSgst">\u20B90.00</td></tr>' +
+        '<tr id="sdRowIgst"><td>IGST</td><td id="sdSumIgst">\u20B90.00</td></tr>' +
+        '<tr><td><label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="sdRoundOffChk" checked> Round Off</label></td><td id="sdSumRoundOff">\u20B90.00</td></tr>' +
+        '<tr class="total-row"><td>Total</td><td id="sdSumTotal">\u20B90.00</td></tr>' +
+      '</table></div></div>';
+
+    // Actions
+    html += '<div class="sale-actions">' +
+      '<button type="button" class="btn btn-ghost btn-lg" onclick="window.goTo(\'' + meta.listPage + '\')">&larr; Back</button>' +
+      '<button type="submit" class="btn btn-primary btn-lg" style="min-width:140px">Save</button></div></form>';
+
+    $content.innerHTML = html;
+    sdAddItemRow();
+
+    // Event listeners
+    document.getElementById('sdAddItemBtn').addEventListener('click', sdAddItemRow);
+    document.getElementById('sdPosState').addEventListener('change', sdRecalculate);
+    document.getElementById('sdRoundOffChk').addEventListener('change', sdRecalculate);
+    document.getElementById('saleDocForm').addEventListener('submit', function (e) {
+      e.preventDefault();
+      sdSubmit(docType);
+    });
+
+    // Party autocomplete
+    acSearch(document.getElementById('sdCName'), document.getElementById('sdCNameAc'), '/api/parties',
+      function (p, q) {
+        return '<div class="ac-main">' + acHL(p.name, q) + '</div>' +
+          (p.gstin || p.phone ? '<div class="ac-sub">' +
+            (p.gstin ? 'GSTIN: ' + p.gstin : '') +
+            (p.gstin && p.phone ? ' \u2022 ' : '') +
+            (p.phone ? 'Ph: ' + p.phone : '') + '</div>' : '');
+      },
+      function (p) {
+        document.getElementById('sdCName').value = p.name;
+        if (p.phone) document.getElementById('sdCPhone').value = p.phone;
+        if (p.email) document.getElementById('sdCEmail').value = p.email;
+        if (p.gstin) document.getElementById('sdCGstin').value = p.gstin;
+        if (p.address) document.getElementById('sdCAddress').value = p.address;
+        if (p.state) document.getElementById('sdCState').value = p.state;
+      }
+    );
+
+    // Invoice reference autocomplete for sale returns
+    if (docType === 'sale_return') {
+      acSearch(document.getElementById('sdRefInvoice'), document.getElementById('sdRefInvoiceAc'), '/api/invoices',
+        function (inv, q) {
+          return '<div class="ac-main">' + acHL(inv.invoice_number, q) + '</div>' +
+            '<div class="ac-sub">' + (inv.customer_name || '') + ' \u2022 ' + formatINR(inv.total || 0) + '</div>';
+        },
+        function (inv) {
+          document.getElementById('sdRefInvoice').value = inv.invoice_number;
+          document.getElementById('sdRefInvoice').setAttribute('data-ref-id', inv.id || inv._id);
+          // Auto-fill customer info from invoice
+          document.getElementById('sdCName').value = inv.customer_name || '';
+          if (inv.customer_phone) document.getElementById('sdCPhone').value = inv.customer_phone;
+          if (inv.customer_email) document.getElementById('sdCEmail').value = inv.customer_email;
+          if (inv.customer_gstin) document.getElementById('sdCGstin').value = inv.customer_gstin;
+          if (inv.customer_address) document.getElementById('sdCAddress').value = inv.customer_address;
+          if (inv.customer_state) document.getElementById('sdCState').value = inv.customer_state;
+          // Auto-populate items from the invoice
+          var tbody = document.getElementById('sdItemsBody');
+          tbody.innerHTML = '';
+          (inv.items || []).forEach(function (item) {
+            sdAddItemRow();
+            var lastRow = tbody.lastElementChild;
+            if (lastRow) {
+              lastRow.querySelector('[data-f="name"]').value = item.name || '';
+              lastRow.querySelector('[data-f="hsn"]').value = item.hsn || '';
+              lastRow.querySelector('[data-f="size"]').value = item.size || '';
+              lastRow.querySelector('[data-f="mrp"]').value = item.mrp || 0;
+              lastRow.querySelector('[data-f="qty"]').value = item.qty || 1;
+              lastRow.querySelector('[data-f="rate"]').value = item.rate || 0;
+              if (item.gst !== undefined) lastRow.querySelector('[data-f="gst"]').value = item.gst;
+              if (item.unit) lastRow.querySelector('[data-f="unit"]').value = item.unit;
+              if (item.disc_pct) lastRow.querySelector('[data-f="disc_pct"]').value = item.disc_pct;
+            }
+          });
+          sdRecalculate();
+        }
+      );
+    }
+  }
+
+  function sdAddItemRow() {
+    var idx = saleDocItemCounter++;
+    var gstOpts = GST_RATES.map(function (r) {
+      return '<option value="' + r + '"' + (r === 18 ? ' selected' : '') + '>' + r + '%</option>';
+    }).join('');
+    var tr = document.createElement('tr');
+    tr.id = 'sd-item-' + idx;
+    tr.innerHTML =
+      '<td><div class="ac-wrap"><input data-f="name" placeholder="Item name" autocomplete="off"><div class="ac-dropdown"></div></div></td>' +
+      '<td><input data-f="hsn" placeholder="HSN"></td>' +
+      '<td><input data-f="size" placeholder="Size"></td>' +
+      '<td><input data-f="mrp" type="number" min="0" step="0.01" placeholder="0"></td>' +
+      '<td><input data-f="qty" type="number" min="1" value="1"></td>' +
+      '<td><select data-f="unit">' + unitOptions('Pcs') + '</select></td>' +
+      '<td><input data-f="rate" type="number" min="0" step="0.01" placeholder="0"></td>' +
+      '<td><input data-f="disc_pct" type="number" min="0" max="100" step="0.01" placeholder="0"></td>' +
+      '<td class="amt" data-f="disc_amt">\u20B90</td>' +
+      '<td><select data-f="gst">' + gstOpts + '</select></td>' +
+      '<td class="amt" data-f="gst_amount">\u20B90</td>' +
+      '<td class="amt" data-f="amount">\u20B90</td>' +
+      '<td><button type="button" class="remove-item" title="Remove">\u00D7</button></td>';
+    document.getElementById('sdItemsBody').appendChild(tr);
+    tr.querySelectorAll('input').forEach(function (el) { el.addEventListener('input', sdRecalculate); });
+    tr.querySelectorAll('select').forEach(function (el) { el.addEventListener('change', sdRecalculate); });
+    tr.querySelector('.remove-item').addEventListener('click', function () {
+      if (document.getElementById('sdItemsBody').children.length > 1) { tr.remove(); sdRecalculate(); }
+    });
+    // Item autocomplete
+    var nameInput = tr.querySelector('[data-f="name"]');
+    var nameDD = nameInput.parentNode.querySelector('.ac-dropdown');
+    acSearch(nameInput, nameDD, '/api/products',
+      function (p, q) {
+        return '<div class="ac-main">' + acHL(p.name, q) + '</div><div class="ac-sub">' +
+          (p.hsn ? 'HSN: ' + p.hsn + ' \u2022 ' : '') + '\u20B9' + (p.rate || 0) + ' \u2022 GST: ' + (p.gst || 0) + '%</div>';
+      },
+      function (p) {
+        nameInput.value = p.name;
+        var row = nameInput.closest('tr');
+        if (p.hsn) row.querySelector('[data-f="hsn"]').value = p.hsn;
+        if (p.size) row.querySelector('[data-f="size"]').value = p.size;
+        if (p.mrp) row.querySelector('[data-f="mrp"]').value = p.mrp;
+        if (p.rate) row.querySelector('[data-f="rate"]').value = p.rate;
+        if (p.gst !== undefined) row.querySelector('[data-f="gst"]').value = p.gst;
+        if (p.unit) row.querySelector('[data-f="unit"]').value = p.unit;
+        sdRecalculate();
+      }
+    );
+    sdRecalculate();
+  }
+
+  function sdRecalculate() {
+    var rows = document.querySelectorAll('#sdItemsBody tr');
+    var subtotal = 0, totalDiscount = 0, totalCgst = 0, totalSgst = 0, totalIgst = 0;
+    var posEl = document.getElementById('sdPosState');
+    var pos = posEl ? posEl.value : '';
+    var businessState = currentUser ? currentUser.state : '';
+    var isIntra = pos && businessState && pos === businessState;
+
+    rows.forEach(function (tr) {
+      var qty = parseFloat(tr.querySelector('[data-f="qty"]').value) || 0;
+      var rate = parseFloat(tr.querySelector('[data-f="rate"]').value) || 0;
+      var gst = parseFloat(tr.querySelector('[data-f="gst"]').value) || 0;
+      var discPct = parseFloat(tr.querySelector('[data-f="disc_pct"]').value) || 0;
+      var lineTotal = qty * rate;
+      var discAmt = lineTotal * discPct / 100;
+      var afterDisc = lineTotal - discAmt;
+      var gstAmt = afterDisc * gst / 100;
+      var amount = afterDisc + gstAmt;
+      subtotal += lineTotal;
+      totalDiscount += discAmt;
+      if (isIntra || !pos) { totalCgst += afterDisc * gst / 200; totalSgst += afterDisc * gst / 200; }
+      else { totalIgst += afterDisc * gst / 100; }
+      tr.querySelector('[data-f="disc_amt"]').textContent = formatINR(discAmt);
+      tr.querySelector('[data-f="gst_amount"]').textContent = formatINR(gstAmt);
+      tr.querySelector('[data-f="amount"]').textContent = formatINR(amount);
+    });
+
+    var taxableAfterDisc = subtotal - totalDiscount;
+    var totalBeforeRound = taxableAfterDisc + totalCgst + totalSgst + totalIgst;
+    var roundOffChk = document.getElementById('sdRoundOffChk');
+    var roundedTotal, roundOff;
+    if (roundOffChk && roundOffChk.checked) {
+      roundedTotal = Math.round(totalBeforeRound);
+      roundOff = roundedTotal - totalBeforeRound;
+    } else {
+      roundedTotal = Math.round(totalBeforeRound * 100) / 100;
+      roundOff = 0;
+    }
+
+    document.getElementById('sdSumSubtotal').textContent = formatINR(subtotal);
+    document.getElementById('sdSumDiscount').textContent = '-' + formatINR(totalDiscount);
+    document.getElementById('sdSumCgst').textContent = formatINR(totalCgst);
+    document.getElementById('sdSumSgst').textContent = formatINR(totalSgst);
+    document.getElementById('sdSumIgst').textContent = formatINR(totalIgst);
+    document.getElementById('sdSumRoundOff').textContent = (roundOff >= 0 ? '+' : '') + formatINR(roundOff);
+    document.getElementById('sdSumTotal').textContent = formatINR(roundedTotal);
+    document.getElementById('sdRowCgst').style.display = totalIgst > 0 ? 'none' : '';
+    document.getElementById('sdRowSgst').style.display = totalIgst > 0 ? 'none' : '';
+    document.getElementById('sdRowIgst').style.display = totalIgst > 0 ? '' : 'none';
+  }
+
+  function sdSubmit(docType) {
+    var meta = SALE_DOC_META[docType];
+    var rows = document.querySelectorAll('#sdItemsBody tr');
+    var posEl = document.getElementById('sdPosState');
+    var pos = posEl ? posEl.value : '';
+    var businessState = currentUser ? currentUser.state : '';
+    var isIntra = pos && businessState && pos === businessState;
+    var items = [];
+    var subtotal = 0, totalDiscount = 0, totalCgst = 0, totalSgst = 0, totalIgst = 0, totalMrp = 0;
+
+    rows.forEach(function (tr) {
+      var name = tr.querySelector('[data-f="name"]').value.trim();
+      var hsn = tr.querySelector('[data-f="hsn"]').value.trim();
+      var size = tr.querySelector('[data-f="size"]').value.trim();
+      var mrp = parseFloat(tr.querySelector('[data-f="mrp"]').value) || 0;
+      var qty = parseFloat(tr.querySelector('[data-f="qty"]').value) || 0;
+      var unit = tr.querySelector('[data-f="unit"]').value;
+      var rate = parseFloat(tr.querySelector('[data-f="rate"]').value) || 0;
+      var gst = parseFloat(tr.querySelector('[data-f="gst"]').value) || 0;
+      var discPct = parseFloat(tr.querySelector('[data-f="disc_pct"]').value) || 0;
+      var lineTotal = qty * rate;
+      var discAmt = lineTotal * discPct / 100;
+      var afterDisc = lineTotal - discAmt;
+      if (!name) return;
+      items.push({ name: name, hsn: hsn, size: size, mrp: mrp, qty: qty, unit: unit, rate: rate, gst: gst, disc_pct: discPct, disc_amt: Math.round(discAmt * 100) / 100 });
+      subtotal += lineTotal;
+      totalDiscount += discAmt;
+      totalMrp += mrp * qty;
+      if (isIntra || !pos) { totalCgst += afterDisc * gst / 200; totalSgst += afterDisc * gst / 200; }
+      else { totalIgst += afterDisc * gst / 100; }
+    });
+
+    var customerName = document.getElementById('sdCName').value.trim();
+    var docDate = document.getElementById('sdDate').value;
+    if (!customerName) { showToast('Please enter customer name', 'error'); document.getElementById('sdCName').focus(); return; }
+    if (!docDate) { showToast('Please select date', 'error'); return; }
+    if (!items.length) { showToast('Add at least one item with a name', 'error'); return; }
+
+    var taxableAfterDisc = subtotal - totalDiscount;
+    var totalBeforeRound = taxableAfterDisc + totalCgst + totalSgst + totalIgst;
+    var roundOffChk = document.getElementById('sdRoundOffChk');
+    var roundedTotal, roundOff;
+    if (roundOffChk && roundOffChk.checked) {
+      roundedTotal = Math.round(totalBeforeRound);
+      roundOff = Math.round((roundedTotal - totalBeforeRound) * 100) / 100;
+    } else {
+      roundedTotal = Math.round(totalBeforeRound * 100) / 100;
+      roundOff = 0;
+    }
+
+    var dueDateEl = document.getElementById('sdDueDate');
+    var body = {
+      doc_type: docType,
+      doc_date: docDate,
+      due_date: dueDateEl ? dueDateEl.value : null,
+      customer_name: customerName,
+      customer_phone: document.getElementById('sdCPhone').value.trim(),
+      customer_email: document.getElementById('sdCEmail').value.trim(),
+      customer_address: document.getElementById('sdCAddress').value.trim(),
+      customer_gstin: document.getElementById('sdCGstin').value.trim().toUpperCase(),
+      customer_state: document.getElementById('sdCState').value,
+      place_of_supply: pos,
+      items: items,
+      subtotal: Math.round(subtotal * 100) / 100,
+      discount: Math.round(totalDiscount * 100) / 100,
+      cgst: Math.round(totalCgst * 100) / 100,
+      sgst: Math.round(totalSgst * 100) / 100,
+      igst: Math.round(totalIgst * 100) / 100,
+      round_off: roundOff,
+      total: roundedTotal,
+      total_mrp: Math.round(totalMrp * 100) / 100,
+      notes: document.getElementById('sdNotes').value.trim(),
+      status: 'draft'
+    };
+
+    // Sale return extras
+    if (docType === 'sale_return') {
+      var refEl = document.getElementById('sdRefInvoice');
+      body.reference_id = refEl ? refEl.getAttribute('data-ref-id') || null : null;
+      var reasonEl = document.getElementById('sdReason');
+      body.reason = reasonEl ? reasonEl.value.trim() : '';
+    }
+
+    var submitBtn = document.querySelector('#saleDocForm button[type="submit"]');
+    if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Saving...'; }
+    api('POST', '/api/sale-docs', body).then(function (data) {
+      if (data.error) {
+        showToast(data.error, 'error');
+        if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Save'; }
+        return;
+      }
+      showToast(data.message || 'Document created!', 'success');
+      window.goTo(meta.detailPage, data.document.id || data.document._id);
+    }).catch(function () {
+      showToast('Failed to create ' + meta.title.toLowerCase(), 'error');
+      if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Save'; }
+    });
+  }
+
+  // ── Shared Detail/View Page ──
+  function renderSaleDocDetail(docType, id) {
+    var meta = SALE_DOC_META[docType];
+    $pageTitle.textContent = meta.title;
+    $content.innerHTML = '<p style="color:var(--text-muted)">Loading...</p>';
+
+    api('GET', '/api/sale-docs/' + id).then(function (data) {
+      if (data.error) { showToast(data.error, 'error'); window.goTo(meta.listPage); return; }
+      var doc = data.document;
+      var items = doc.items || [];
+      var u = currentUser || {};
+      var isIntra = !doc.igst || doc.igst === 0;
+      var taxSummary = computeTaxSummary(items, isIntra);
+      var theme = u.invoice_theme || 'classic';
+
+      // Check if expired (for estimates)
+      var isExpired = false;
+      if (docType === 'estimate' && doc.due_date && (doc.status === 'draft' || doc.status === 'sent')) {
+        var today = new Date().toISOString().slice(0, 10);
+        if (doc.due_date < today) isExpired = true;
+      }
+
+      // Action buttons
+      var html = '<div class="no-print" style="display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap">';
+      html += '<button type="button" class="btn btn-primary" onclick="window.print()">Print / PDF</button>';
+      if (meta.canConvert && doc.status !== 'converted') {
+        html += '<button type="button" class="btn btn-secondary" id="sdConvertBtn">Convert to Invoice</button>';
+      }
+      if (doc.status === 'draft') {
+        html += '<button type="button" class="btn btn-outline" id="sdMarkSentBtn">Mark as Sent</button>';
+      }
+      if (docType === 'challan' && doc.status === 'sent') {
+        html += '<button type="button" class="btn btn-outline" id="sdMarkDeliveredBtn">Mark Delivered</button>';
+      }
+      html += '<button type="button" class="btn btn-danger" id="sdDeleteBtn">Delete</button>';
+      html += '<button type="button" class="btn btn-ghost" onclick="window.goTo(\'' + meta.listPage + '\')">\u2190 Back</button></div>';
+
+      // Print area (reuse invoice print layout)
+      html += '<div class="invoice-print theme-' + theme + '" id="sdPrintArea">';
+      // Title bar
+      html += '<div class="inv-title-bar"><h2>' + meta.printTitle + (isExpired ? ' (EXPIRED)' : '') + '</h2></div>';
+
+      // Business header
+      var hasLogo = u.logo ? true : false;
+      html += '<div class="inv-biz-header' + (hasLogo ? ' has-logo' : '') + '">';
+      html += '<div class="biz-info"><h3 class="biz-name">' + esc(u.business_name || u.name || 'Your Business') + '</h3>';
+      if (u.address) html += '<p>' + esc(u.address) + (u.city ? ', ' + esc(u.city) : '') + (u.state ? ', ' + esc(u.state) : '') + (u.pincode ? ' - ' + esc(u.pincode) : '') + '</p>';
+      if (u.gstin) html += '<p><strong>GSTIN:</strong> ' + esc(u.gstin) + '</p>';
+      if (u.phone) html += '<p>Ph: ' + esc(u.phone) + (u.email ? ' | ' + esc(u.email) : '') + '</p>';
+      html += '</div>';
+      if (hasLogo) html += '<div class="biz-logo"><img src="' + u.logo + '" alt="Logo"></div>';
+      html += '</div>';
+
+      // Info row
+      html += '<div class="inv-info-row"><div>';
+      html += '<div class="inv-info-label">Bill To</div>';
+      html += '<p><strong>' + esc(doc.customer_name || '') + '</strong></p>';
+      if (doc.customer_address) html += '<p>' + esc(doc.customer_address) + '</p>';
+      if (doc.customer_state) html += '<p>' + esc(doc.customer_state) + '</p>';
+      if (doc.customer_gstin) html += '<p>GSTIN: ' + esc(doc.customer_gstin) + '</p>';
+      if (doc.customer_phone) html += '<p>Ph: ' + esc(doc.customer_phone) + '</p>';
+      html += '</div><div style="text-align:right">';
+      html += '<div class="inv-info-label">' + meta.printTitle + ' Details</div>';
+      html += '<p><strong>' + meta.prefix + ' #:</strong> ' + doc.doc_number + '</p>';
+      html += '<p><strong>Date:</strong> ' + formatDateSlash(doc.doc_date) + '</p>';
+      if (doc.due_date) html += '<p><strong>' + meta.dueDateLabel + ':</strong> ' + formatDateSlash(doc.due_date) + '</p>';
+      if (doc.place_of_supply) html += '<p><strong>Place of Supply:</strong> ' + esc(doc.place_of_supply) + '</p>';
+      html += '<p><strong>Status:</strong> ' + saleDocStatusBadge(isExpired ? 'expired' : doc.status) + '</p>';
+      if (doc.reason) html += '<p><strong>Reason:</strong> ' + esc(doc.reason) + '</p>';
+      html += '</div></div>';
+
+      // Items table
+      html += '<table class="inv-items-table"><thead><tr style="text-align:left">';
+      html += '<th style="text-align:left">#</th><th style="text-align:left">Item</th><th>HSN</th><th>Qty</th><th>Rate</th><th>GST</th><th>Amount</th></tr></thead><tbody>';
+      var totalInclAmount = 0;
+      items.forEach(function (item, i) {
+        var lineTotal = (item.qty || 0) * (item.rate || 0);
+        var discAmt = item.disc_amt || (lineTotal * (item.disc_pct || 0) / 100);
+        var taxable = lineTotal - discAmt;
+        var gstAmt = taxable * (item.gst || 0) / 100;
+        var amount = taxable + gstAmt;
+        totalInclAmount += amount;
+        html += '<tr><td style="text-align:left">' + (i + 1) + '</td>';
+        html += '<td style="text-align:left">' + esc(item.name || '') + (item.size ? '<br><small>' + esc(item.size) + '</small>' : '') + '</td>';
+        html += '<td>' + (item.hsn || '-') + '</td>';
+        html += '<td>' + (item.qty || 0) + ' ' + (item.unit || 'Pcs') + '</td>';
+        html += '<td>' + formatINR(item.rate || 0) + '</td>';
+        html += '<td>' + formatINR(gstAmt) + '<br><small>(' + (item.gst || 0) + '%)</small></td>';
+        html += '<td>' + formatINR(amount) + '</td></tr>';
+      });
+      html += '</tbody></table>';
+
+      // Totals
+      var displayDiscount = doc.discount || 0;
+      var grandTotal = doc.total || 0;
+      html += '<div class="inv-totals-section"><table>';
+      html += '<tr><td>Sub Total</td><td>:</td><td class="text-right">' + formatINR(totalInclAmount + displayDiscount) + '</td></tr>';
+      if (displayDiscount > 0) {
+        html += '<tr><td>Discount</td><td>:</td><td class="text-right">-' + formatINR(displayDiscount) + '</td></tr>';
+      }
+      if (doc.round_off) html += '<tr><td>Round Off</td><td>:</td><td class="text-right">' + (doc.round_off >= 0 ? '+' : '') + formatINR(doc.round_off) + '</td></tr>';
+      html += '<tr class="total-row"><td><strong>Total</strong></td><td>:</td><td class="text-right"><strong>' + formatINR(grandTotal) + '</strong></td></tr></table></div>';
+
+      // Amount in words
+      html += '<div class="inv-words"><strong>Amount in Words:</strong><br>' + numberToWords(grandTotal) + '</div>';
+
+      // Notes
+      if (doc.notes) {
+        html += '<div style="padding:12px 30px"><p style="font-size:0.875rem;color:var(--text-muted)"><strong>Notes:</strong> ' + esc(doc.notes) + '</p></div>';
+      }
+
+      html += '</div>'; // close invoice-print
+
+      $content.innerHTML = html;
+
+      // Event listeners for buttons
+      var convertBtn = document.getElementById('sdConvertBtn');
+      if (convertBtn) {
+        convertBtn.addEventListener('click', function () {
+          if (!confirm('Convert this ' + meta.title.toLowerCase() + ' to an invoice?')) return;
+          convertBtn.disabled = true; convertBtn.textContent = 'Converting...';
+          api('POST', '/api/sale-docs/' + id + '/convert').then(function (d) {
+            if (d.error) { showToast(d.error, 'error'); convertBtn.disabled = false; convertBtn.textContent = 'Convert to Invoice'; return; }
+            showToast(d.message || 'Converted!', 'success');
+            window.goTo('invoice', d.invoice.id || d.invoice._id);
+          }).catch(function () { showToast('Conversion failed', 'error'); convertBtn.disabled = false; convertBtn.textContent = 'Convert to Invoice'; });
+        });
+      }
+
+      var sentBtn = document.getElementById('sdMarkSentBtn');
+      if (sentBtn) {
+        sentBtn.addEventListener('click', function () {
+          sentBtn.disabled = true;
+          api('PUT', '/api/sale-docs/' + id, { status: 'sent' }).then(function (d) {
+            if (d.error) { showToast(d.error, 'error'); sentBtn.disabled = false; return; }
+            showToast('Marked as sent', 'success');
+            renderSaleDocDetail(docType, id);
+          }).catch(function () { sentBtn.disabled = false; });
+        });
+      }
+
+      var deliveredBtn = document.getElementById('sdMarkDeliveredBtn');
+      if (deliveredBtn) {
+        deliveredBtn.addEventListener('click', function () {
+          deliveredBtn.disabled = true;
+          api('PUT', '/api/sale-docs/' + id, { status: 'delivered' }).then(function (d) {
+            if (d.error) { showToast(d.error, 'error'); deliveredBtn.disabled = false; return; }
+            showToast('Marked as delivered', 'success');
+            renderSaleDocDetail(docType, id);
+          }).catch(function () { deliveredBtn.disabled = false; });
+        });
+      }
+
+      var deleteBtn = document.getElementById('sdDeleteBtn');
+      if (deleteBtn) {
+        deleteBtn.addEventListener('click', function () {
+          if (!confirm('Delete this ' + meta.title.toLowerCase() + '? This cannot be undone.')) return;
+          deleteBtn.disabled = true;
+          api('DELETE', '/api/sale-docs/' + id).then(function (d) {
+            if (d.error) { showToast(d.error, 'error'); deleteBtn.disabled = false; return; }
+            showToast('Deleted', 'success');
+            window.goTo(meta.listPage);
+          }).catch(function () { deleteBtn.disabled = false; });
+        });
+      }
+
+    }).catch(function () {
+      showToast('Failed to load document', 'error');
+      window.goTo(meta.listPage);
+    });
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // PAYMENT-IN
+  // ═══════════════════════════════════════════════════════════
+
+  function renderPaymentsInList() {
+    $pageTitle.textContent = 'Payment-In';
+    $content.innerHTML = '<p style="color:var(--text-muted)">Loading...</p>';
+    api('GET', '/api/payments-in').then(function (data) {
+      var list = data.payments || [];
+      var html = '<div class="page-actions">' +
+        '<div class="page-search"><svg width="16" height="16" fill="none" stroke="var(--text-muted)" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>' +
+        '<input id="paySearch" placeholder="Search payments..." autocomplete="off"></div>' +
+        '<button type="button" class="btn btn-primary btn-sm" onclick="window.goTo(\'new-payment-in\')">+ Record Payment</button></div>';
+      html += '<div class="table-card"><div class="table-header"><h3>Payments Received (' + list.length + ')</h3></div>';
+      if (list.length) {
+        html += '<div class="table-wrap"><table><thead><tr>' +
+          '<th>Payment #</th><th>Date</th><th>Party</th><th>Mode</th><th class="text-right">Amount</th><th>Reference</th></tr></thead><tbody>';
+        list.forEach(function (pay) {
+          html += '<tr>' +
+            '<td><strong>' + pay.payment_number + '</strong></td>' +
+            '<td>' + formatDate(pay.payment_date) + '</td>' +
+            '<td>' + esc(pay.party_name || '-') + '</td>' +
+            '<td><span class="payment-mode-badge">' + (pay.payment_mode || 'cash').toUpperCase() + '</span></td>' +
+            '<td class="text-right" style="font-weight:700;color:var(--success)">' + formatINR(pay.amount || 0) + '</td>' +
+            '<td>' + esc(pay.reference_number || '-') + '</td></tr>';
+        });
+        html += '</tbody></table></div>';
+      } else {
+        html += '<div class="empty-state">No payments recorded yet. <button type="button" onclick="window.goTo(\'new-payment-in\')" style="color:var(--primary);background:none;border:none;cursor:pointer;font:inherit;font-weight:600;text-decoration:underline">Record one now!</button></div>';
+      }
+      html += '</div>';
+      // Summary
+      if (list.length) {
+        var totalReceived = list.reduce(function (s, p) { return s + (p.amount || 0); }, 0);
+        html += '<div style="margin-top:16px;text-align:right;font-size:0.9375rem"><strong>Total Received:</strong> <span style="color:var(--success);font-weight:700;font-size:1.125rem">' + formatINR(totalReceived) + '</span></div>';
+      }
+      $content.innerHTML = html;
+      // Search filter
+      var searchInput = document.getElementById('paySearch');
+      if (searchInput) {
+        searchInput.addEventListener('input', function () {
+          var q = this.value.toLowerCase();
+          var rows = $content.querySelectorAll('tbody tr');
+          rows.forEach(function (row) { row.style.display = row.textContent.toLowerCase().indexOf(q) !== -1 ? '' : 'none'; });
+        });
+      }
+    }).catch(function () {
+      $content.innerHTML = '<div class="empty-state">Failed to load payments.</div>';
+    });
+  }
+
+  function renderNewPaymentIn() {
+    $pageTitle.textContent = 'Record Payment';
+    var today = new Date().toISOString().slice(0, 10);
+
+    var html = '<div class="form-card" style="max-width:700px">' +
+      '<h3>Record Payment Received</h3>' +
+      '<form id="paymentInForm">' +
+      '<div class="form-grid">' +
+        '<div class="form-group full">' +
+          '<label>Party / Customer *</label>' +
+          '<div class="ac-wrap"><input id="piPartyName" placeholder="Search party name..." autocomplete="off"><div class="ac-dropdown" id="piPartyAc"></div></div>' +
+          '<input type="hidden" id="piPartyId">' +
+        '</div>' +
+        '<div class="form-group full">' +
+          '<label>Select Invoice (optional)</label>' +
+          '<div id="piInvoiceList"><p style="color:var(--text-muted);font-size:0.875rem">Select a party first to see unpaid invoices</p></div>' +
+          '<input type="hidden" id="piInvoiceId">' +
+        '</div>' +
+        fg('Amount *', '<input id="piAmount" type="number" min="0.01" step="0.01" placeholder="0.00" required>') +
+        fg('Payment Date', '<input id="piDate" type="date" value="' + today + '">') +
+        fg('Payment Mode', '<select id="piMode"><option value="cash">Cash</option><option value="bank_transfer">Bank Transfer</option><option value="upi">UPI</option><option value="cheque">Cheque</option><option value="other">Other</option></select>') +
+        fg('Reference / Txn No.', '<input id="piRef" placeholder="Cheque no., UPI ref., etc.">') +
+        '<div class="form-group full">' +
+          '<label>Notes</label>' +
+          '<textarea id="piNotes" style="width:100%;min-height:60px;padding:10px;font-family:inherit;font-size:0.875rem;border:1.5px solid var(--border);border-radius:8px;resize:vertical" placeholder="Optional notes..."></textarea>' +
+        '</div>' +
+      '</div>' +
+      '<div class="form-actions">' +
+        '<button type="button" class="btn btn-ghost" onclick="window.goTo(\'payments-in\')">Cancel</button>' +
+        '<button type="submit" class="btn btn-primary">Save Payment</button>' +
+      '</div></form></div>';
+
+    $content.innerHTML = html;
+
+    // Party autocomplete
+    acSearch(document.getElementById('piPartyName'), document.getElementById('piPartyAc'), '/api/parties',
+      function (p, q) {
+        return '<div class="ac-main">' + acHL(p.name, q) + '</div>' +
+          (p.phone ? '<div class="ac-sub">Ph: ' + p.phone + '</div>' : '');
+      },
+      function (p) {
+        document.getElementById('piPartyName').value = p.name;
+        document.getElementById('piPartyId').value = p.id || p._id || '';
+        // Load unpaid invoices for this party
+        loadUnpaidInvoices(p.name);
+      }
+    );
+
+    // Form submit
+    document.getElementById('paymentInForm').addEventListener('submit', function (e) {
+      e.preventDefault();
+      var amount = parseFloat(document.getElementById('piAmount').value) || 0;
+      if (amount <= 0) { showToast('Enter a valid amount', 'error'); return; }
+
+      var body = {
+        party_name: document.getElementById('piPartyName').value.trim(),
+        party_id: document.getElementById('piPartyId').value || null,
+        invoice_id: document.getElementById('piInvoiceId').value || null,
+        amount: amount,
+        payment_date: document.getElementById('piDate').value,
+        payment_mode: document.getElementById('piMode').value,
+        reference_number: document.getElementById('piRef').value.trim(),
+        notes: document.getElementById('piNotes').value.trim()
+      };
+
+      var submitBtn = document.querySelector('#paymentInForm button[type="submit"]');
+      if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Saving...'; }
+      api('POST', '/api/payments-in', body).then(function (data) {
+        if (data.error) {
+          showToast(data.error, 'error');
+          if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Save Payment'; }
+          return;
+        }
+        showToast(data.message || 'Payment recorded!', 'success');
+        window.goTo('payments-in');
+      }).catch(function () {
+        showToast('Failed to record payment', 'error');
+        if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Save Payment'; }
+      });
+    });
+  }
+
+  function loadUnpaidInvoices(partyName) {
+    var container = document.getElementById('piInvoiceList');
+    container.innerHTML = '<p style="color:var(--text-muted);font-size:0.875rem">Loading invoices...</p>';
+    api('GET', '/api/invoices/unpaid?party=' + encodeURIComponent(partyName)).then(function (data) {
+      var invList = data.invoices || [];
+      if (!invList.length) {
+        container.innerHTML = '<p style="color:var(--text-muted);font-size:0.875rem">No unpaid invoices for this party.</p>';
+        return;
+      }
+      var html = '<div style="display:flex;flex-direction:column;gap:8px;max-height:200px;overflow-y:auto">';
+      invList.forEach(function (inv) {
+        var invId = inv.id || inv._id;
+        var outstanding = (inv.total || 0) - (inv.amount_paid || 0);
+        html += '<div class="inv-select-card" data-inv-id="' + invId + '" data-outstanding="' + outstanding + '">' +
+          '<div><strong>' + inv.invoice_number + '</strong><br><small>' + formatDate(inv.invoice_date) + '</small></div>' +
+          '<div style="text-align:right"><div>Total: ' + formatINR(inv.total || 0) + '</div>' +
+          '<div class="inv-outstanding">Outstanding: ' + formatINR(outstanding) + '</div></div></div>';
+      });
+      html += '</div>';
+      container.innerHTML = html;
+
+      // Click to select invoice
+      container.querySelectorAll('.inv-select-card').forEach(function (card) {
+        card.addEventListener('click', function () {
+          container.querySelectorAll('.inv-select-card').forEach(function (c) { c.classList.remove('selected'); });
+          card.classList.add('selected');
+          document.getElementById('piInvoiceId').value = card.getAttribute('data-inv-id');
+          // Pre-fill amount with outstanding
+          var outstanding = parseFloat(card.getAttribute('data-outstanding')) || 0;
+          document.getElementById('piAmount').value = outstanding.toFixed(2);
+        });
+      });
+    }).catch(function () {
+      container.innerHTML = '<p style="color:var(--text-muted);font-size:0.875rem">Failed to load invoices.</p>';
     });
   }
 

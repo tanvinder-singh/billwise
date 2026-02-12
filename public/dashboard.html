@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="dashboard.css?v=21" />
+  <link rel="stylesheet" href="dashboard.css?v=22" />
 </head>
 <body>
   <div class="app">
@@ -36,14 +36,36 @@
           <button type="button" class="nav-add-btn" title="Add Item" onclick="window.goTo('add-item')">+</button>
         </div>
         <div class="sidebar-divider"></div>
-        <button type="button" class="nav-item" data-page="new-invoice" onclick="window.goTo('new-invoice')">
-          <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
-          <span>New Invoice</span>
-        </button>
-        <button type="button" class="nav-item" data-page="invoices" onclick="window.goTo('invoices')">
-          <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8M16 17H8M10 9H8"/></svg>
-          <span>All Invoices</span>
-        </button>
+        <div class="nav-group" id="saleNavGroup">
+          <button type="button" class="nav-group-header" id="saleGroupToggle">
+            <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+            <span>Sale</span>
+            <svg class="nav-group-arrow" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+          <div class="nav-group-items" id="saleGroupItems">
+            <button type="button" class="nav-item nav-sub-item" data-page="new-invoice" onclick="window.goTo('new-invoice')">
+              <span>Sale Invoice</span>
+            </button>
+            <button type="button" class="nav-item nav-sub-item" data-page="invoices" onclick="window.goTo('invoices')">
+              <span>All Invoices</span>
+            </button>
+            <button type="button" class="nav-item nav-sub-item" data-page="estimates" onclick="window.goTo('estimates')">
+              <span>Estimate / Quotation</span>
+            </button>
+            <button type="button" class="nav-item nav-sub-item" data-page="proformas" onclick="window.goTo('proformas')">
+              <span>Proforma Invoice</span>
+            </button>
+            <button type="button" class="nav-item nav-sub-item" data-page="payments-in" onclick="window.goTo('payments-in')">
+              <span>Payment-In</span>
+            </button>
+            <button type="button" class="nav-item nav-sub-item" data-page="challans" onclick="window.goTo('challans')">
+              <span>Delivery Challan</span>
+            </button>
+            <button type="button" class="nav-item nav-sub-item" data-page="sale-returns" onclick="window.goTo('sale-returns')">
+              <span>Sale Return / Cr. Note</span>
+            </button>
+          </div>
+        </div>
         <button type="button" class="nav-item" data-page="reports" onclick="window.goTo('reports')">
           <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
           <span>Reports</span>
@@ -86,6 +108,6 @@
   </div>
   <div class="toast" id="toast"></div>
   <div class="overlay" id="overlay"></div>
-  <script src="dashboard.js?v=20"></script>
+  <script src="dashboard.js?v=21"></script>
 </body>
 </html>

@@ -140,6 +140,58 @@ async function initDB() {
         updated_at TIMESTAMP DEFAULT NOW()
       );
       CREATE UNIQUE INDEX IF NOT EXISTS idx_party_item_rates_unique ON party_item_rates(user_id, party_id, product_id);
+
+      -- Sale documents (estimates, proforma invoices, delivery challans, sale returns)
+      CREATE TABLE IF NOT EXISTS sale_documents (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        doc_type VARCHAR(20) NOT NULL,
+        doc_number VARCHAR(50) NOT NULL,
+        doc_date DATE DEFAULT CURRENT_DATE,
+        due_date DATE,
+        customer_name VARCHAR(200),
+        customer_phone VARCHAR(20) DEFAULT '',
+        customer_email VARCHAR(200) DEFAULT '',
+        customer_address TEXT DEFAULT '',
+        customer_gstin VARCHAR(15) DEFAULT '',
+        customer_state VARCHAR(100) DEFAULT '',
+        place_of_supply VARCHAR(100) DEFAULT '',
+        payment_terms VARCHAR(50) DEFAULT '',
+        items JSONB DEFAULT '[]',
+        subtotal NUMERIC(12,2) DEFAULT 0,
+        cgst NUMERIC(12,2) DEFAULT 0,
+        sgst NUMERIC(12,2) DEFAULT 0,
+        igst NUMERIC(12,2) DEFAULT 0,
+        round_off NUMERIC(12,2) DEFAULT 0,
+        total_mrp NUMERIC(12,2) DEFAULT 0,
+        discount NUMERIC(12,2) DEFAULT 0,
+        total NUMERIC(12,2) DEFAULT 0,
+        status VARCHAR(20) DEFAULT 'draft',
+        reference_id UUID,
+        reason TEXT DEFAULT '',
+        notes TEXT DEFAULT '',
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_sale_docs_user ON sale_documents(user_id);
+      CREATE INDEX IF NOT EXISTS idx_sale_docs_type ON sale_documents(user_id, doc_type);
+
+      -- Payments received
+      CREATE TABLE IF NOT EXISTS payments_in (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        payment_number VARCHAR(50) NOT NULL,
+        invoice_id UUID REFERENCES invoices(id) ON DELETE SET NULL,
+        party_name VARCHAR(200) DEFAULT '',
+        party_id UUID,
+        amount NUMERIC(12,2) NOT NULL,
+        payment_date DATE DEFAULT CURRENT_DATE,
+        payment_mode VARCHAR(50) DEFAULT 'cash',
+        reference_number VARCHAR(100) DEFAULT '',
+        notes TEXT DEFAULT '',
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_payments_in_user ON payments_in(user_id);
+      CREATE INDEX IF NOT EXISTS idx_payments_in_invoice ON payments_in(invoice_id);
     `);
     console.log('  [DB] PostgreSQL tables initialized');
   } finally {
@@ -163,7 +215,7 @@ function norm(row) {
   }
   // Convert numeric columns from string to number
   ['subtotal','cgst','sgst','igst','round_off','total_mrp','discount','total','amount_paid',
-   'opening_balance','credit_limit','mrp','rate','gst','stock_quantity','low_stock_threshold'].forEach(k => {
+   'opening_balance','credit_limit','mrp','rate','gst','stock_quantity','low_stock_threshold','amount'].forEach(k => {
     if (r[k] !== undefined && r[k] !== null) r[k] = parseFloat(r[k]);
   });
   // Parse JSONB fields
@@ -347,5 +399,7 @@ const invoices = createCollection('invoices');
 const otps = createCollection('otps');
 const parties = createCollection('parties');
 const products = createCollection('products');
+const saleDocuments = createCollection('sale_documents');
+const paymentsIn = createCollection('payments_in');
 
-module.exports = { pool, initDB, users, invoices, otps, parties, products };
+module.exports = { pool, initDB, users, invoices, otps, parties, products, saleDocuments, paymentsIn };
