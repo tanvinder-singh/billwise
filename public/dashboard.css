@@ -767,7 +767,7 @@ tr:hover td { background:rgba(241,245,249,0.5); }
 
 .sale-items {
   background:var(--surface); border-radius:var(--radius); border:1px solid var(--border);
-  box-shadow:var(--shadow); margin-bottom:16px; overflow:hidden;
+  box-shadow:var(--shadow); margin-bottom:16px; overflow:visible;
 }
 .sale-items-actions { padding:12px 16px; border-top:1px solid var(--border); }
 
@@ -1227,10 +1227,10 @@ tr:hover td { background:rgba(241,245,249,0.5); }
 /* Autocomplete dropdown */
 .ac-wrap { position:relative; }
 .ac-dropdown, .ac-list {
-  display:none; position:absolute; top:100%; left:0; right:0; z-index:60;
+  display:none; position:absolute; top:100%; left:0; right:0; z-index:200;
   background:var(--surface); border:1.5px solid var(--primary);
   border-top:none; border-radius:0 0 var(--radius-sm) var(--radius-sm);
-  box-shadow:0 8px 16px rgba(0,0,0,0.1); max-height:220px; overflow-y:auto;
+  box-shadow:0 8px 24px rgba(0,0,0,0.18); max-height:220px; overflow-y:auto;
 }
 .ac-dropdown.open, .ac-list.open { display:block; }
 .ac-item {
@@ -1243,8 +1243,11 @@ tr:hover td { background:rgba(241,245,249,0.5); }
 .ac-item .ac-sub { font-size:0.75rem; color:var(--text-muted); margin-top:1px; }
 .ac-item b { color:var(--primary); }
 /* inside table cells */
-.items-table td .ac-wrap { width:100%; }
-.items-table td .ac-dropdown, .items-table td .ac-list { min-width:240px; }
+.items-table td .ac-wrap { width:100%; position:relative; }
+.items-table td .ac-dropdown, .items-table td .ac-list { min-width:260px; }
+/* Ensure the autocomplete dropdown is not clipped by parent overflow */
+.items-table { overflow:visible !important; }
+.items-table td { overflow:visible; position:relative; }
 
 /* Toast */
 .toast {
