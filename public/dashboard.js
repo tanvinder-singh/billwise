@@ -3250,108 +3250,230 @@
   // EXPENSES
   // ═══════════════════════════════════════════════════════════
 
-  var EXPENSE_CATEGORIES = ['General','Rent','Utilities','Salary','Travel','Office Supplies','Marketing','Insurance','Maintenance','Internet & Phone','Legal & Professional','Food & Beverages','Fuel','Miscellaneous'];
+  var EXPENSE_CATEGORIES = ['Petrol','Rent','Salary','Tea','Transport','Utilities','Office Supplies','Marketing','Insurance','Maintenance','Internet & Phone','Legal & Professional','Food & Beverages','Miscellaneous'];
 
   function renderExpensesList() {
     $pageTitle.textContent = 'Expenses';
     $content.innerHTML = '<p class="loading">Loading...</p>';
     api('GET', '/api/expenses').then(function (res) {
-      var list = res.expenses || [];
-      var now = new Date();
-      var firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
-      var lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-      var fmtD = function(d){ return String(d.getDate()).padStart(2,'0') + '/' + String(d.getMonth()+1).padStart(2,'0') + '/' + d.getFullYear(); };
-      var thisMonth = list.filter(function(e) { var dt = new Date(e.expense_date); return dt >= firstDay && dt <= lastDay; });
-      var totalAmt = 0;
-      thisMonth.forEach(function (e) { totalAmt += (e.amount || 0); });
+      var allExpenses = res.expenses || [];
 
-      // Header
-      var html = '<div class="pe-page-header">' +
-        '<h2>Expenses</h2>' +
-        '<button class="btn-add-primary" onclick="window.goTo(\'new-expense\')">+ Add Expense</button></div>';
+      // Build category totals
+      var catTotals = {};
+      EXPENSE_CATEGORIES.forEach(function (c) { catTotals[c] = 0; });
+      allExpenses.forEach(function (e) {
+        var cat = e.category || 'Miscellaneous';
+        if (catTotals[cat] === undefined) catTotals[cat] = 0;
+        catTotals[cat] += (e.amount || 0);
+      });
 
-      // Filter bar
-      html += '<div class="page-filter-bar">' +
-        '<label>Filter by :</label>' +
-        '<select id="expFilterPeriod">' +
-        '<option value="this_month" selected>This Month</option><option value="last_month">Last Month</option>' +
-        '<option value="this_quarter">This Quarter</option><option value="this_year">This Year</option><option value="all">All Time</option></select>' +
-        '<div class="filter-sep"></div>' +
-        '<span style="font-size:0.8rem;color:var(--text-muted)">' + fmtD(firstDay) + '  To  ' + fmtD(lastDay) + '</span></div>';
+      // Tabs
+      var html = '<div class="exp-tabs">' +
+        '<button class="exp-tab active" id="expTabCategory">CATEGORY</button>' +
+        '<button class="exp-tab" id="expTabItems">ITEMS</button></div>';
 
-      // Summary
-      html += '<div class="summary-card-row">' +
-        '<div class="summary-card-box"><div class="sc-label">Total Expenses</div><div class="sc-value">' + formatINR(totalAmt) + '</div></div></div>';
+      // Main two-panel layout
+      html += '<div class="exp-master-detail">';
 
-      if (!thisMonth.length) {
-        html += '<div class="pe-empty-state">' +
-          '<svg width="80" height="80" fill="none" stroke="var(--text-muted)" stroke-width="1" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>' +
-          '<h3>No Expenses</h3><p>Track your business expenses here.</p>' +
-          '<button class="btn-add-primary" onclick="window.goTo(\'new-expense\')">+ Add Expense</button></div>';
-      } else {
-        html += '<div class="invoice-list" id="expListCards">';
-        thisMonth.forEach(function (e) {
-          html += '<div class="expense-card" onclick="window.goTo(\'expense\',\'' + e.id + '\')" style="cursor:pointer">' +
-            '<div class="inv-row"><strong>' + esc(e.expense_number) + '</strong>' +
-            '<span class="expense-cat-badge">' + esc(e.category || 'General') + '</span>' +
-            '<span class="payment-amount">' + formatINR(e.amount) + '</span></div>' +
-            '<div class="inv-row"><span>' + esc(e.description || e.party_name || '') + '</span>' +
-            '<span class="payment-mode-badge">' + esc(e.payment_mode || 'cash') + '</span>' +
-            '<span style="color:var(--text-muted);font-size:0.85rem">' + formatDate(e.expense_date) + '</span></div></div>';
-        });
-        html += '</div>';
-      }
+      // Left panel: category list
+      html += '<div class="exp-left-panel">' +
+        '<div class="exp-left-header">' +
+        '<div class="exp-search-wrap"><svg width="16" height="16" fill="none" stroke="var(--text-muted)" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>' +
+        '<input id="expCatSearch" class="exp-search-input" placeholder="Search" autocomplete="off" /></div>' +
+        '<button class="btn-add-primary btn-sm" onclick="window.goTo(\'new-expense\')" style="white-space:nowrap;font-size:0.8rem;padding:6px 14px">+ Add Expense</button></div>' +
+        '<div class="exp-cat-table">' +
+        '<div class="exp-cat-header"><span class="exp-cat-col-name">CATEGORY <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5M5 12l7-7 7 7"/></svg></span><span class="exp-cat-col-amt">AMOUNT</span></div>' +
+        '<div class="exp-cat-list" id="expCatList">';
+      EXPENSE_CATEGORIES.forEach(function (cat, idx) {
+        html += '<div class="exp-cat-row' + (idx === 0 ? ' active' : '') + '" data-cat="' + esc(cat) + '">' +
+          '<span class="exp-cat-col-name">' + esc(cat) + '</span>' +
+          '<span class="exp-cat-col-amt">' + (catTotals[cat] || 0).toLocaleString('en-IN', {minimumFractionDigits: 0}) + '</span>' +
+          '<button class="exp-cat-menu" title="Options">&#8942;</button></div>';
+      });
+      html += '</div></div></div>';
+
+      // Right panel: detail view
+      html += '<div class="exp-right-panel" id="expRightPanel">';
+      var firstCat = EXPENSE_CATEGORIES[0];
+      html += buildExpenseDetailPanel(firstCat, allExpenses, catTotals);
+      html += '</div>';
+
+      html += '</div>'; // close master-detail
       $content.innerHTML = html;
-      // Attach filter
-      var sel = document.getElementById('expFilterPeriod');
-      if (sel) {
-        sel.addEventListener('change', function () {
-          var val = sel.value;
-          var now2 = new Date(), startD, endD;
-          if (val === 'this_month') { startD = new Date(now2.getFullYear(), now2.getMonth(), 1); endD = new Date(now2.getFullYear(), now2.getMonth()+1, 0); }
-          else if (val === 'last_month') { startD = new Date(now2.getFullYear(), now2.getMonth()-1, 1); endD = new Date(now2.getFullYear(), now2.getMonth(), 0); }
-          else if (val === 'this_quarter') { var q = Math.floor(now2.getMonth()/3)*3; startD = new Date(now2.getFullYear(), q, 1); endD = new Date(now2.getFullYear(), q+3, 0); }
-          else if (val === 'this_year') { startD = new Date(now2.getFullYear(), 0, 1); endD = new Date(now2.getFullYear(), 11, 31); }
-          else { startD = new Date(2000,0,1); endD = new Date(2099,11,31); }
-          var filtered = list.filter(function(e) { var dt = new Date(e.expense_date); return dt >= startD && dt <= endD; });
-          var tAmt = 0;
-          filtered.forEach(function(e) { tAmt += (e.amount || 0); });
-          var summaryBox = document.querySelector('.summary-card-box');
-          if (summaryBox) summaryBox.querySelector('.sc-value').textContent = formatINR(tAmt);
-          var fmtD2 = function(d2){ return String(d2.getDate()).padStart(2,'0') + '/' + String(d2.getMonth()+1).padStart(2,'0') + '/' + d2.getFullYear(); };
-          var spanEl = sel.parentElement.querySelector('span');
-          if (spanEl && val !== 'all') spanEl.textContent = fmtD2(startD) + '  To  ' + fmtD2(endD);
-          else if (spanEl) spanEl.textContent = 'All Time';
-          var listEl = document.getElementById('expListCards');
-          var emptyEl = document.querySelector('.pe-empty-state');
-          if (!filtered.length) {
-            if (listEl) listEl.innerHTML = '';
-            if (!emptyEl) {
-              var emptyDiv = document.createElement('div');
-              emptyDiv.className = 'pe-empty-state';
-              emptyDiv.innerHTML = '<svg width="80" height="80" fill="none" stroke="var(--text-muted)" stroke-width="1" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>' +
-                '<h3>No Expenses</h3><p>No transactions in this period.</p>' +
-                '<button class="btn-add-primary" onclick="window.goTo(\'new-expense\')">+ Add Expense</button>';
-              $content.appendChild(emptyDiv);
-            }
-          } else {
-            if (emptyEl) emptyEl.remove();
-            if (!listEl) { listEl = document.createElement('div'); listEl.className = 'invoice-list'; listEl.id = 'expListCards'; $content.appendChild(listEl); }
-            var cHtml = '';
-            filtered.forEach(function(e) {
-              cHtml += '<div class="expense-card" onclick="window.goTo(\'expense\',\'' + e.id + '\')" style="cursor:pointer">' +
-                '<div class="inv-row"><strong>' + esc(e.expense_number) + '</strong>' +
-                '<span class="expense-cat-badge">' + esc(e.category || 'General') + '</span>' +
-                '<span class="payment-amount">' + formatINR(e.amount) + '</span></div>' +
-                '<div class="inv-row"><span>' + esc(e.description || e.party_name || '') + '</span>' +
-                '<span class="payment-mode-badge">' + esc(e.payment_mode || 'cash') + '</span>' +
-                '<span style="color:var(--text-muted);font-size:0.85rem">' + formatDate(e.expense_date) + '</span></div></div>';
-            });
-            listEl.innerHTML = cHtml;
-          }
+
+      // Category click handlers
+      var catRows = document.querySelectorAll('.exp-cat-row');
+      catRows.forEach(function (row) {
+        row.addEventListener('click', function () {
+          catRows.forEach(function (r) { r.classList.remove('active'); });
+          row.classList.add('active');
+          var cat = row.getAttribute('data-cat');
+          document.getElementById('expRightPanel').innerHTML = buildExpenseDetailPanel(cat, allExpenses, catTotals);
+          attachExpDetailListeners(cat, allExpenses);
+        });
+      });
+
+      // Category search filter
+      var catSearch = document.getElementById('expCatSearch');
+      if (catSearch) {
+        catSearch.addEventListener('input', function () {
+          var q = catSearch.value.toLowerCase();
+          catRows.forEach(function (row) {
+            var name = row.getAttribute('data-cat').toLowerCase();
+            row.style.display = name.indexOf(q) !== -1 ? '' : 'none';
+          });
         });
       }
+
+      // Tabs (CATEGORY vs ITEMS)
+      document.getElementById('expTabCategory').addEventListener('click', function () {
+        document.getElementById('expTabCategory').classList.add('active');
+        document.getElementById('expTabItems').classList.remove('active');
+        document.querySelector('.exp-left-panel .exp-cat-header .exp-cat-col-name').innerHTML = 'CATEGORY <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5M5 12l7-7 7 7"/></svg>';
+        rebuildCatList(allExpenses, catTotals, 'category');
+      });
+      document.getElementById('expTabItems').addEventListener('click', function () {
+        document.getElementById('expTabItems').classList.add('active');
+        document.getElementById('expTabCategory').classList.remove('active');
+        document.querySelector('.exp-left-panel .exp-cat-header .exp-cat-col-name').innerHTML = 'ITEM <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5M5 12l7-7 7 7"/></svg>';
+        // Group by description/item instead of category
+        var itemTotals = {};
+        allExpenses.forEach(function (e) {
+          var key = e.description || e.party_name || 'Uncategorized';
+          if (!itemTotals[key]) itemTotals[key] = 0;
+          itemTotals[key] += (e.amount || 0);
+        });
+        var listEl = document.getElementById('expCatList');
+        if (!listEl) return;
+        var h = '';
+        var items = Object.keys(itemTotals).sort();
+        if (!items.length) items = ['No items'];
+        items.forEach(function (item, idx) {
+          h += '<div class="exp-cat-row' + (idx === 0 ? ' active' : '') + '" data-cat="' + esc(item) + '">' +
+            '<span class="exp-cat-col-name">' + esc(item) + '</span>' +
+            '<span class="exp-cat-col-amt">' + (itemTotals[item] || 0).toLocaleString('en-IN', {minimumFractionDigits: 0}) + '</span>' +
+            '<button class="exp-cat-menu" title="Options">&#8942;</button></div>';
+        });
+        listEl.innerHTML = h;
+        // Select first
+        var firstItem = items[0];
+        var filtered = allExpenses.filter(function (e) { return (e.description || e.party_name || 'Uncategorized') === firstItem; });
+        var total = 0; filtered.forEach(function(e) { total += (e.amount || 0); });
+        document.getElementById('expRightPanel').innerHTML = buildExpenseDetailPanel(firstItem, allExpenses, itemTotals, 'item');
+        attachExpDetailListeners(firstItem, allExpenses, 'item');
+        // Re-attach click
+        document.querySelectorAll('.exp-cat-row').forEach(function (row) {
+          row.addEventListener('click', function () {
+            document.querySelectorAll('.exp-cat-row').forEach(function (r) { r.classList.remove('active'); });
+            row.classList.add('active');
+            var key = row.getAttribute('data-cat');
+            document.getElementById('expRightPanel').innerHTML = buildExpenseDetailPanel(key, allExpenses, itemTotals, 'item');
+            attachExpDetailListeners(key, allExpenses, 'item');
+          });
+        });
+      });
+
+      attachExpDetailListeners(firstCat, allExpenses);
     }).catch(function () { $content.innerHTML = '<p class="text-danger">Failed to load expenses</p>'; });
+  }
+
+  function rebuildCatList(allExpenses, catTotals, mode) {
+    var listEl = document.getElementById('expCatList');
+    if (!listEl) return;
+    var h = '';
+    EXPENSE_CATEGORIES.forEach(function (cat, idx) {
+      h += '<div class="exp-cat-row' + (idx === 0 ? ' active' : '') + '" data-cat="' + esc(cat) + '">' +
+        '<span class="exp-cat-col-name">' + esc(cat) + '</span>' +
+        '<span class="exp-cat-col-amt">' + (catTotals[cat] || 0).toLocaleString('en-IN', {minimumFractionDigits: 0}) + '</span>' +
+        '<button class="exp-cat-menu" title="Options">&#8942;</button></div>';
+    });
+    listEl.innerHTML = h;
+    var firstCat = EXPENSE_CATEGORIES[0];
+    document.getElementById('expRightPanel').innerHTML = buildExpenseDetailPanel(firstCat, allExpenses, catTotals);
+    attachExpDetailListeners(firstCat, allExpenses);
+    document.querySelectorAll('.exp-cat-row').forEach(function (row) {
+      row.addEventListener('click', function () {
+        document.querySelectorAll('.exp-cat-row').forEach(function (r) { r.classList.remove('active'); });
+        row.classList.add('active');
+        var cat = row.getAttribute('data-cat');
+        document.getElementById('expRightPanel').innerHTML = buildExpenseDetailPanel(cat, allExpenses, catTotals);
+        attachExpDetailListeners(cat, allExpenses);
+      });
+    });
+  }
+
+  function buildExpenseDetailPanel(catName, allExpenses, totalsMap, groupBy) {
+    var total = totalsMap[catName] || 0;
+    var filtered;
+    if (groupBy === 'item') {
+      filtered = allExpenses.filter(function (e) { return (e.description || e.party_name || 'Uncategorized') === catName; });
+    } else {
+      filtered = allExpenses.filter(function (e) { return (e.category || 'Miscellaneous') === catName; });
+    }
+    var h = '<div class="exp-detail-header">' +
+      '<div><div class="exp-detail-title">' + esc(catName).toUpperCase() + '</div>' +
+      '<div class="exp-detail-sub">Direct Expense</div></div>' +
+      '<div class="exp-detail-totals"><div>Total : ' + formatINR(total) + '</div>' +
+      '<div>Balance : ' + formatINR(total) + '</div></div></div>';
+
+    // Search + Table
+    h += '<div class="exp-detail-body">' +
+      '<div class="exp-detail-search"><svg width="14" height="14" fill="none" stroke="var(--text-muted)" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>' +
+      '<input id="expDetailSearch" class="exp-search-input" placeholder="Search" autocomplete="off" /></div>' +
+      '<div class="exp-detail-table-wrap"><table class="exp-detail-table"><thead><tr>' +
+      '<th>DATE</th><th>EXP NO.</th><th>PARTY</th><th>PAYMENT</th><th>AMOUNT</th><th>BALANCE</th><th>STATUS</th><th></th>' +
+      '</tr></thead><tbody id="expDetailTbody">';
+    if (!filtered.length) {
+      h += '<tr><td colspan="8" class="exp-empty-cell">No transactions to show</td></tr>';
+    } else {
+      filtered.forEach(function (e) {
+        h += '<tr class="exp-detail-row" data-id="' + e.id + '" style="cursor:pointer">' +
+          '<td>' + formatDateSlash(e.expense_date) + '</td>' +
+          '<td>' + esc(e.expense_number) + '</td>' +
+          '<td>' + esc(e.party_name || '-') + '</td>' +
+          '<td><span class="payment-mode-badge">' + esc(e.payment_mode || 'cash') + '</span></td>' +
+          '<td class="exp-amt-cell">' + formatINR(e.amount) + '</td>' +
+          '<td>' + formatINR(e.amount) + '</td>' +
+          '<td><span class="badge badge-paid">Paid</span></td>' +
+          '<td><button class="exp-cat-menu exp-row-del" data-id="' + e.id + '" title="Delete">&#8942;</button></td></tr>';
+      });
+    }
+    h += '</tbody></table></div></div>';
+    return h;
+  }
+
+  function attachExpDetailListeners(catName, allExpenses, groupBy) {
+    // Click rows to view detail
+    document.querySelectorAll('.exp-detail-row').forEach(function (row) {
+      row.addEventListener('click', function (ev) {
+        if (ev.target.closest('.exp-row-del')) return;
+        window.goTo('expense', row.getAttribute('data-id'));
+      });
+    });
+    // Delete buttons
+    document.querySelectorAll('.exp-row-del').forEach(function (btn) {
+      btn.addEventListener('click', function (ev) {
+        ev.stopPropagation();
+        var eid = btn.getAttribute('data-id');
+        if (!confirm('Delete this expense?')) return;
+        api('DELETE', '/api/expenses/' + eid).then(function (r) {
+          if (r.error) return showToast(r.error, 'error');
+          showToast('Expense deleted', 'success');
+          renderExpensesList();
+        });
+      });
+    });
+    // Detail search
+    var detailSearch = document.getElementById('expDetailSearch');
+    if (detailSearch) {
+      detailSearch.addEventListener('input', function () {
+        var q = detailSearch.value.toLowerCase();
+        document.querySelectorAll('.exp-detail-row').forEach(function (row) {
+          var text = row.textContent.toLowerCase();
+          row.style.display = text.indexOf(q) !== -1 ? '' : 'none';
+        });
+      });
+    }
   }
 
   function renderNewExpense() {
