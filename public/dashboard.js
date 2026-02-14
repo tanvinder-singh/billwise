@@ -3001,21 +3001,87 @@
       '<div class="form-group"><label>Supplier State</label><input id="pdState" class="form-control" placeholder="State" /></div>' +
       '<div class="form-group"><label>Date</label><input id="pdDate" type="date" class="form-control" value="' + today + '" /></div>' +
       '<div class="form-group"><label>' + (docType === 'purchase_order' ? 'Expected Date' : 'Due Date') + '</label><input id="pdDueDate" type="date" class="form-control" /></div>' +
-      '</div>' +
-      '<h3 style="margin-top:20px;font-size:1rem">Items</h3>' +
-      '<div id="pdItemsWrap"><table class="items-table"><thead><tr><th>Item</th><th>HSN</th><th>Qty</th><th>Rate</th><th>GST%</th><th>Amount</th><th></th></tr></thead><tbody id="pdItemsBody"></tbody></table></div>' +
-      '<button type="button" class="btn btn-outline btn-sm" style="margin-top:8px" onclick="pdAddItemRow()">+ Add Item</button>' +
-      '<div class="form-grid" style="margin-top:18px">' +
+      '</div>';
+
+    // Purchase items table with column settings (same as sale invoice)
+    var pdColSettings = (currentUser && currentUser.item_settings && currentUser.item_settings.pd_visible_columns) || {};
+    var pdColDefs = [
+      { key:'name', label:'Item Name', always:true },
+      { key:'hsn', label:'HSN/SAC' },
+      { key:'size', label:'Size' },
+      { key:'qty', label:'Qty', always:true },
+      { key:'unit', label:'Unit' },
+      { key:'rate', label:'Rate', always:true },
+      { key:'disc_pct', label:'Disc%' },
+      { key:'gst', label:'GST%', always:true },
+      { key:'amount', label:'Amount', always:true }
+    ];
+    pdColDefs.forEach(function(c) {
+      if (c.always) { c.visible = true; return; }
+      c.visible = pdColSettings[c.key] !== undefined ? pdColSettings[c.key] : true;
+    });
+    window._pdColDefs = pdColDefs;
+
+    html += '<div class="sale-items" style="margin-top:20px"><div class="sale-items-toolbar">' +
+      '<span class="toolbar-label">Items</span>' +
+      '<button type="button" class="col-settings-btn" id="pdColSettingsBtn" title="Column settings">' +
+      '<svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>' +
+      '</button></div>';
+
+    // Column settings panel
+    html += '<div class="col-settings-panel" id="pdColSettingsPanel">';
+    pdColDefs.forEach(function(c) {
+      if (c.always) return;
+      html += '<label class="col-toggle-item"><input type="checkbox" data-col="' + c.key + '"' + (c.visible ? ' checked' : '') + '>' +
+        '<span>' + c.label + '</span></label>';
+    });
+    html += '<div class="col-settings-link" id="pdColMoreSettings" style="cursor:pointer"><svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="vertical-align:-2px"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg> More Settings</div></div>';
+
+    html += '<div class="table-wrap"><table class="items-table" id="pdItemsTable"><thead><tr id="pdItemsHead">' +
+      '<th style="width:36px;text-align:center">#</th>';
+    pdColDefs.forEach(function(c) {
+      var vis = c.visible ? '' : ' style="display:none"';
+      html += '<th data-col="' + c.key + '"' + vis + '>' + c.label + '</th>';
+    });
+    html += '<th style="width:30px"></th></tr></thead><tbody id="pdItemsBody"></tbody>' +
+    '<tfoot><tr class="items-total-row" id="pdItemsTotalRow">' +
+      '<td style="padding:0"></td>' +
+      '<td data-col="name">' +
+        '<button type="button" class="add-row-inline" id="pdAddItemBtn" title="Add Row">' +
+          '<svg width="18" height="18" fill="none" stroke="var(--primary)" stroke-width="2.5" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>' +
+          '<span>ADD ROW</span></button>' +
+        '<span class="total-label">TOTAL</span></td>';
+    pdColDefs.forEach(function(c) {
+      if (c.key === 'name') return;
+      var vis = c.visible ? '' : ' style="display:none"';
+      if (c.key === 'amount') {
+        html += '<td data-col="amount"' + vis + '><strong id="pdFooterTotal">\u20B90</strong></td>';
+      } else if (c.key === 'qty') {
+        html += '<td data-col="qty"' + vis + '><strong id="pdFooterQty">0</strong></td>';
+      } else {
+        html += '<td data-col="' + c.key + '"' + vis + '></td>';
+      }
+    });
+    html += '<td></td></tr></tfoot></table></div></div>';
+
+    html += '<div class="form-grid" style="margin-top:18px">' +
       '<div class="form-group"><label>Notes</label><textarea id="pdNotes" class="form-control" rows="2" placeholder="Notes"></textarea></div>' +
       '<div class="form-group"><label>Reference Number</label><input id="pdRefNo" class="form-control" placeholder="Bill / Reference #" /></div>' +
       '</div>' +
       '<div id="pdTotals" class="totals-box"></div>' +
       '<div style="margin-top:18px;display:flex;gap:10px">' +
-      '<button type="button" class="btn btn-primary" onclick="pdSubmit(\'' + docType + '\')">Save ' + meta.singular + '</button>' +
-      '<button type="button" class="btn btn-outline" onclick="window.goTo(\'' + meta.newPage.replace('new-','') + 's\')">Cancel</button></div></form>';
+      '<button type="button" class="btn btn-primary" id="pdSaveBtn">Save ' + meta.singular + '</button>' +
+      '<button type="button" class="btn btn-outline" id="pdCancelBtn">Cancel</button></div></form>';
     $content.innerHTML = html;
+
+    // Wire up save + cancel buttons via addEventListener (no inline onclick)
+    document.getElementById('pdSaveBtn').addEventListener('click', function() { pdSubmit(docType); });
+    document.getElementById('pdCancelBtn').addEventListener('click', function() { window.goTo(meta.newPage.replace('new-','') + 's'); });
+    document.getElementById('pdAddItemBtn').addEventListener('click', pdAddItemRow);
+
     pdAddItemRow();
     pdRecalculate();
+
     // Supplier autocomplete
     acSearch(document.getElementById('pdSupplier'), document.getElementById('pdSupplierAC'), '/api/parties',
       function (p, q) {
@@ -3030,20 +3096,83 @@
         document.getElementById('pdGstin').value = p.gstin || '';
         document.getElementById('pdState').value = p.state || '';
       });
+
+    // Column settings gear button for purchase docs
+    (function() {
+      var settingsBtn = document.getElementById('pdColSettingsBtn');
+      var settingsPanel = document.getElementById('pdColSettingsPanel');
+      if (!settingsBtn || !settingsPanel) return;
+      settingsBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        settingsPanel.classList.toggle('open');
+      });
+      document.addEventListener('click', function(ev) {
+        if (!settingsPanel.contains(ev.target) && ev.target !== settingsBtn) {
+          settingsPanel.classList.remove('open');
+        }
+      });
+      settingsPanel.querySelectorAll('input[data-col]').forEach(function(chk) {
+        chk.addEventListener('change', function() {
+          var col = chk.dataset.col;
+          var show = chk.checked;
+          (window._pdColDefs || []).forEach(function(c) { if (c.key === col) c.visible = show; });
+          var th = document.querySelector('#pdItemsHead th[data-col="' + col + '"]');
+          if (th) th.style.display = show ? '' : 'none';
+          document.querySelectorAll('#pdItemsTable td[data-col="' + col + '"]').forEach(function(td) {
+            td.style.display = show ? '' : 'none';
+          });
+          // Save preferences
+          var prefs = {};
+          (window._pdColDefs || []).forEach(function(c) { if (!c.always) prefs[c.key] = c.visible; });
+          var is = (currentUser && currentUser.item_settings) ? Object.assign({}, currentUser.item_settings) : {};
+          is.pd_visible_columns = prefs;
+          api('PUT', '/api/auth/profile', { item_settings: is }).then(function(data) {
+            if (data && data.user) currentUser = data.user;
+          });
+        });
+      });
+      var moreLink = document.getElementById('pdColMoreSettings');
+      if (moreLink) moreLink.addEventListener('click', function() {
+        settingsPanel.classList.remove('open');
+        window.goTo('settings');
+      });
+    })();
   }
+
+  window.pdAddItemRow = pdAddItemRow;
+  window.pdRecalculate = pdRecalculate;
+  window.pdSubmit = pdSubmit;
 
   function pdAddItemRow() {
     var tbody = document.getElementById('pdItemsBody');
     if (!tbody) return;
     var tr = document.createElement('tr');
-    tr.innerHTML = '<td><div class="ac-wrap"><input class="form-control pd-item-name" placeholder="Item name" autocomplete="off" /><div class="ac-list pd-item-ac"></div></div></td>' +
-      '<td><input class="form-control pd-item-hsn" style="width:70px" /></td>' +
-      '<td><input class="form-control pd-item-qty" type="number" value="1" min="0" step="any" style="width:60px" /></td>' +
-      '<td><input class="form-control pd-item-rate" type="number" step="any" value="0" style="width:80px" /></td>' +
-      '<td><input class="form-control pd-item-gst" type="number" value="0" step="any" style="width:60px" /></td>' +
-      '<td class="pd-item-amt" style="text-align:right;white-space:nowrap">0.00</td>' +
-      '<td><button type="button" class="btn-icon" onclick="this.closest(\'tr\').remove();pdRecalculate()" title="Remove">&times;</button></td>';
+    var _pcd = window._pdColDefs || [];
+    function _pcv(key) {
+      for (var i = 0; i < _pcd.length; i++) { if (_pcd[i].key === key) return _pcd[i].visible ? '' : ' style="display:none"'; }
+      return '';
+    }
+    var rowNum = tbody.children.length + 1;
+    var gstOpts = GST_RATES.map(function (r) {
+      return '<option value="' + r + '"' + (r === 18 ? ' selected' : '') + '>' + r + '%</option>';
+    }).join('');
+    tr.innerHTML =
+      '<td class="row-num" style="text-align:center;color:var(--text-muted);font-weight:500">' + rowNum + '</td>' +
+      '<td data-col="name"' + _pcv('name') + '><div class="ac-wrap"><input class="form-control pd-item-name" placeholder="Item name" autocomplete="off" /><div class="ac-list pd-item-ac"></div></div></td>' +
+      '<td data-col="hsn"' + _pcv('hsn') + '><input class="form-control pd-item-hsn" placeholder="HSN" /></td>' +
+      '<td data-col="size"' + _pcv('size') + '><input class="form-control pd-item-size" placeholder="Size" /></td>' +
+      '<td data-col="qty"' + _pcv('qty') + '><input class="form-control pd-item-qty" type="number" value="1" min="0" step="any" /></td>' +
+      '<td data-col="unit"' + _pcv('unit') + '><select class="form-control pd-item-unit">' + unitOptions('Pcs') + '</select></td>' +
+      '<td data-col="rate"' + _pcv('rate') + '><input class="form-control pd-item-rate" type="number" step="any" value="0" /></td>' +
+      '<td data-col="disc_pct"' + _pcv('disc_pct') + '><input class="form-control pd-item-disc" type="number" min="0" max="100" step="0.01" value="0" /></td>' +
+      '<td data-col="gst"' + _pcv('gst') + '><select class="form-control pd-item-gst">' + gstOpts + '</select></td>' +
+      '<td data-col="amount"' + _pcv('amount') + ' class="pd-item-amt" style="text-align:right;white-space:nowrap">\u20B90</td>' +
+      '<td><button type="button" class="remove-item" title="Remove">\u00D7</button></td>';
     tbody.appendChild(tr);
+    // Remove button
+    tr.querySelector('.remove-item').addEventListener('click', function() {
+      if (tbody.children.length > 1) { tr.remove(); pdRecalculate(); }
+    });
     // Item autocomplete
     var nameInp = tr.querySelector('.pd-item-name');
     var acDiv = tr.querySelector('.pd-item-ac');
@@ -3055,47 +3184,65 @@
       function (p) {
         nameInp.value = p.name;
         tr.querySelector('.pd-item-hsn').value = p.hsn || '';
+        if (p.size) tr.querySelector('.pd-item-size').value = p.size;
         tr.querySelector('.pd-item-rate').value = p.rate || 0;
         tr.querySelector('.pd-item-gst').value = p.gst || 0;
+        if (p.unit) tr.querySelector('.pd-item-unit').value = p.unit;
         pdRecalculate();
       });
-    ['pd-item-qty','pd-item-rate','pd-item-gst'].forEach(function (cls) {
-      tr.querySelector('.' + cls).addEventListener('input', pdRecalculate);
-    });
+    tr.querySelectorAll('input').forEach(function(el) { el.addEventListener('input', pdRecalculate); });
+    tr.querySelectorAll('select').forEach(function(el) { el.addEventListener('change', pdRecalculate); });
   }
 
   function pdRecalculate() {
     var rows = document.querySelectorAll('#pdItemsBody tr');
-    var subtotal = 0, totalCgst = 0, totalSgst = 0;
+    var subtotal = 0, totalCgst = 0, totalSgst = 0, totalQty = 0, totalDisc = 0;
+    var rowIdx = 0;
     rows.forEach(function (tr) {
+      rowIdx++;
+      var numCell = tr.querySelector('.row-num');
+      if (numCell) numCell.textContent = rowIdx;
       var qty = parseFloat(tr.querySelector('.pd-item-qty').value) || 0;
       var rate = parseFloat(tr.querySelector('.pd-item-rate').value) || 0;
       var gstP = parseFloat(tr.querySelector('.pd-item-gst').value) || 0;
+      var discPct = 0;
+      var discInp = tr.querySelector('.pd-item-disc');
+      if (discInp) discPct = parseFloat(discInp.value) || 0;
       var lineTotal = qty * rate;
-      var gstAmt = lineTotal * gstP / 100;
+      var discAmt = lineTotal * discPct / 100;
+      var afterDisc = lineTotal - discAmt;
+      var gstAmt = afterDisc * gstP / 100;
       subtotal += lineTotal;
+      totalDisc += discAmt;
       totalCgst += gstAmt / 2;
       totalSgst += gstAmt / 2;
-      tr.querySelector('.pd-item-amt').textContent = (lineTotal + gstAmt).toFixed(2);
+      totalQty += qty;
+      tr.querySelector('.pd-item-amt').textContent = formatINR(afterDisc + gstAmt);
     });
-    var total = subtotal + totalCgst + totalSgst;
+    var total = subtotal - totalDisc + totalCgst + totalSgst;
     var roundOff = Math.round(total) - total;
     var grandTotal = Math.round(total);
     var box = document.getElementById('pdTotals');
     if (box) {
       box.innerHTML = '<div class="totals-row"><span>Subtotal</span><span>' + formatINR(subtotal) + '</span></div>' +
+        (totalDisc > 0 ? '<div class="totals-row"><span>Discount</span><span>-' + formatINR(totalDisc) + '</span></div>' : '') +
         '<div class="totals-row"><span>CGST</span><span>' + formatINR(totalCgst) + '</span></div>' +
         '<div class="totals-row"><span>SGST</span><span>' + formatINR(totalSgst) + '</span></div>' +
         '<div class="totals-row"><span>Round Off</span><span>' + roundOff.toFixed(2) + '</span></div>' +
         '<div class="totals-row total-final"><span>Total</span><span>' + formatINR(grandTotal) + '</span></div>';
     }
+    // Update footer totals
+    var ft = document.getElementById('pdFooterTotal');
+    if (ft) ft.textContent = formatINR(grandTotal);
+    var fq = document.getElementById('pdFooterQty');
+    if (fq) fq.textContent = totalQty;
   }
 
   function pdSubmit(docType) {
     var supplier = (document.getElementById('pdSupplier').value || '').trim();
     if (!supplier) return showToast('Supplier name is required', 'error');
     var rows = document.querySelectorAll('#pdItemsBody tr');
-    var items = [], subtotal = 0, tCgst = 0, tSgst = 0;
+    var items = [], subtotal = 0, tCgst = 0, tSgst = 0, tDisc = 0;
     rows.forEach(function (tr) {
       var name = tr.querySelector('.pd-item-name').value.trim();
       if (!name) return;
@@ -3103,15 +3250,21 @@
       var rate = parseFloat(tr.querySelector('.pd-item-rate').value) || 0;
       var gst = parseFloat(tr.querySelector('.pd-item-gst').value) || 0;
       var hsn = tr.querySelector('.pd-item-hsn').value.trim();
+      var size = tr.querySelector('.pd-item-size') ? tr.querySelector('.pd-item-size').value.trim() : '';
+      var unit = tr.querySelector('.pd-item-unit') ? tr.querySelector('.pd-item-unit').value : '';
+      var discPct = tr.querySelector('.pd-item-disc') ? parseFloat(tr.querySelector('.pd-item-disc').value) || 0 : 0;
       var lineTotal = qty * rate;
-      var gstAmt = lineTotal * gst / 100;
+      var discAmt = lineTotal * discPct / 100;
+      var afterDisc = lineTotal - discAmt;
+      var gstAmt = afterDisc * gst / 100;
       subtotal += lineTotal;
+      tDisc += discAmt;
       tCgst += gstAmt / 2;
       tSgst += gstAmt / 2;
-      items.push({ name: name, hsn: hsn, qty: qty, rate: rate, gst: gst, amount: lineTotal + gstAmt });
+      items.push({ name: name, hsn: hsn, size: size, unit: unit, qty: qty, rate: rate, gst: gst, disc_pct: discPct, disc_amt: Math.round(discAmt * 100) / 100, amount: afterDisc + gstAmt });
     });
     if (!items.length) return showToast('Add at least one item', 'error');
-    var total = subtotal + tCgst + tSgst;
+    var total = subtotal - tDisc + tCgst + tSgst;
     var roundOff = Math.round(total) - total;
     var grandTotal = Math.round(total);
     var body = {
@@ -3125,7 +3278,7 @@
       supplier_gstin: document.getElementById('pdGstin').value,
       supplier_state: document.getElementById('pdState').value,
       items: items, subtotal: subtotal, cgst: tCgst, sgst: tSgst, igst: 0,
-      total: grandTotal, round_off: roundOff, discount: 0,
+      total: grandTotal, round_off: roundOff, discount: tDisc,
       notes: document.getElementById('pdNotes').value,
       reference_number: document.getElementById('pdRefNo').value
     };
@@ -4208,7 +4361,8 @@
           custom_fields: document.getElementById('isCustomFields') ? document.getElementById('isCustomFields').checked : false,
           low_stock_threshold: parseInt(document.getElementById('isLowStockThreshold') ? document.getElementById('isLowStockThreshold').value : '10') || 10,
           categories: (document.getElementById('isCategoryList') ? document.getElementById('isCategoryList').value : 'Electronics, Clothing, Food, Medicine, Other').split(',').map(function(c) { return c.trim(); }).filter(Boolean),
-          visible_columns: (currentUser && currentUser.item_settings && currentUser.item_settings.visible_columns) || {}
+          visible_columns: (currentUser && currentUser.item_settings && currentUser.item_settings.visible_columns) || {},
+          pd_visible_columns: (currentUser && currentUser.item_settings && currentUser.item_settings.pd_visible_columns) || {}
         }
       };
       var submitBtn = e.target.querySelector('button[type="submit"]');
