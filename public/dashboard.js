@@ -1431,12 +1431,19 @@
 
       // Items table
       var hasDiscount = totalDiscountAmt > 0;
+      var _detailIs = (currentUser && currentUser.item_settings) || {};
+      var _detailCf = _detailIs.custom_fields_list || [];
       html += '<div class="table-wrap"><table class="inv-items-table"><thead><tr>' +
         '<th>#</th><th class="text-left">Item name</th><th>HSN/SAC</th>' +
-        '<th>Size</th><th>MRP(\u20B9)</th><th>Quantity</th><th>Unit</th>' +
+        '<th>' + (_detailIs.size_label || 'Size') + '</th><th>' + (_detailIs.mrp_label || 'MRP') + '(\u20B9)</th><th>Quantity</th><th>Unit</th>' +
         '<th>Price/Unit(\u20B9)</th>' +
         (hasDiscount ? '<th>Disc(\u20B9)</th>' : '') +
-        '<th>GST(\u20B9)</th><th>Amount(\u20B9)</th></tr></thead><tbody>';
+        '<th>GST(\u20B9)</th>';
+      // Custom field headers in detail view
+      _detailCf.forEach(function(cf) {
+        if (cf.name) html += '<th>' + esc(cf.name) + '</th>';
+      });
+      html += '<th>Amount(\u20B9)</th></tr></thead><tbody>';
       items.forEach(function (item, i) {
         html += '<tr><td>' + (i + 1) + '</td>';
         html += '<td class="text-left">' + esc(item.name) + '</td>';
@@ -1450,6 +1457,13 @@
           html += '<td>' + (item._disc_amt ? formatINR(item._disc_amt) + (item.disc_pct ? '<br><small>(' + item.disc_pct + '%)</small>' : '') : '-') + '</td>';
         }
         html += '<td>' + formatINR(item._gst_amount) + '<br><small>(' + item.gst + '%)</small></td>';
+        // Custom field values in detail view
+        _detailCf.forEach(function(cf) {
+          if (cf.name) {
+            var cfKey = 'cf_' + cf.name.toLowerCase().replace(/[^a-z0-9]/g, '_');
+            html += '<td>' + esc(item[cfKey] || '') + '</td>';
+          }
+        });
         html += '<td>' + formatINR(item._amount) + '</td></tr>';
       });
       var footColspan = hasDiscount ? 6 : 5;
@@ -1457,8 +1471,10 @@
         '<td colspan="' + footColspan + '" class="text-left" style="font-weight:700">Total</td>' +
         '<td style="font-weight:700">' + totalQty + '</td><td></td><td></td>' +
         (hasDiscount ? '<td></td>' : '') +
-        '<td style="font-weight:700">' + formatINR(totalGstAmt) + '</td>' +
-        '<td style="font-weight:700">' + formatINR(totalInclAmount) + '</td>' +
+        '<td style="font-weight:700">' + formatINR(totalGstAmt) + '</td>';
+      // Empty cells for custom fields in footer
+      _detailCf.forEach(function(cf) { if (cf.name) html += '<td></td>'; });
+      html += '<td style="font-weight:700">' + formatINR(totalInclAmount) + '</td>' +
         '</tr></tfoot></table></div>';
 
       // Tax Summary
@@ -1684,11 +1700,12 @@
 
     // Items table - read column visibility from item_settings
     var colSettings = (currentUser && currentUser.item_settings && currentUser.item_settings.visible_columns) || {};
+    var _is = (currentUser && currentUser.item_settings) || {};
     var colDefs = [
       { key:'name', label:'Item Name', always:true },
       { key:'hsn', label:'HSN/SAC' },
-      { key:'size', label:'Size' },
-      { key:'mrp', label:'MRP' },
+      { key:'size', label: _is.size_label || 'Size' },
+      { key:'mrp', label: _is.mrp_label || 'MRP' },
       { key:'qty', label:'Qty', always:true },
       { key:'unit', label:'Unit' },
       { key:'rate', label:'Price/Unit', always:true },
@@ -1698,6 +1715,18 @@
       { key:'gst_amount', label:'GST\u20B9' },
       { key:'amount', label:'Amount', always:true }
     ];
+    // Inject custom fields from item_settings before the Amount column
+    var customFields = _is.custom_fields_list || [];
+    if (customFields.length > 0) {
+      var amtIdx = colDefs.length - 1; // 'amount' is last
+      customFields.forEach(function(cf) {
+        if (cf.name) {
+          var cfKey = 'cf_' + cf.name.toLowerCase().replace(/[^a-z0-9]/g, '_');
+          colDefs.splice(amtIdx, 0, { key: cfKey, label: cf.name, custom: true });
+          amtIdx++;
+        }
+      });
+    }
     // Default: all visible
     colDefs.forEach(function(c) {
       if (c.always) { c.visible = true; return; }
@@ -1726,16 +1755,24 @@
       var vis = c.visible ? '' : ' style="display:none"';
       html += '<th data-col="' + c.key + '"' + vis + '>' + c.label + '</th>';
     });
+    var visColCount = 1; // # column
+    colDefs.forEach(function(c) { if (c.visible) visColCount++; });
+    visColCount++; // action column
+
     html += '<th style="width:30px"></th></tr></thead><tbody id="itemsBody"></tbody>' +
     '<tfoot>' +
-    '<tr class="items-total-row" id="itemsTotalRow">' +
-      '<td style="padding:0"></td>' +
-      '<td data-col="name">' +
+    // ADD ROW row
+    '<tr class="items-addrow-row">' +
+      '<td colspan="' + visColCount + '" style="padding:6px 12px;border-top:1px solid var(--border)">' +
         '<button type="button" class="add-row-inline" id="addItemBtn" title="Add Row">' +
           '<svg width="18" height="18" fill="none" stroke="var(--primary)" stroke-width="2.5" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>' +
           '<span>ADD ROW</span></button>' +
-        '<span class="total-label">TOTAL</span>' +
-      '</td>';
+      '</td>' +
+    '</tr>' +
+    // TOTAL row
+    '<tr class="items-total-row" id="itemsTotalRow">' +
+      '<td></td>' +
+      '<td data-col="name"><strong class="total-label">TOTAL</strong></td>';
     colDefs.forEach(function(c) {
       if (c.key === 'name') return;
       var vis = c.visible ? '' : ' style="display:none"';
@@ -1890,6 +1927,13 @@
       return '';
     }
     var rowNum = document.getElementById('itemsBody') ? document.getElementById('itemsBody').children.length + 1 : 1;
+    // Build custom field cells
+    var cfCells = '';
+    _cd.forEach(function(c) {
+      if (c.custom) {
+        cfCells += '<td data-col="' + c.key + '"' + _cv(c.key) + '><input data-f="' + c.key + '" placeholder="' + c.label + '"></td>';
+      }
+    });
     tr.innerHTML =
       '<td class="row-num" style="text-align:center;color:var(--text-muted);font-weight:500">' + rowNum + '</td>' +
       '<td data-col="name"' + _cv('name') + '><div class="ac-wrap"><input data-f="name" placeholder="Item name" autocomplete="off"><div class="ac-dropdown"></div></div></td>' +
@@ -1903,6 +1947,7 @@
       '<td data-col="disc_amt"' + _cv('disc_amt') + ' class="amt" data-f="disc_amt">\u20B90</td>' +
       '<td data-col="gst"' + _cv('gst') + '><select data-f="gst">' + gstOpts + '</select></td>' +
       '<td data-col="gst_amount"' + _cv('gst_amount') + ' class="amt" data-f="gst_amount">\u20B90</td>' +
+      cfCells +
       '<td data-col="amount"' + _cv('amount') + ' class="amt" data-f="amount">\u20B90</td>' +
       '<td><button type="button" class="remove-item" title="Remove">\u00D7</button></td>';
     document.getElementById('itemsBody').appendChild(tr);
@@ -2056,7 +2101,15 @@
       var discAmt = lineTotal * discPct / 100;
       var afterDisc = lineTotal - discAmt;
       if (!name) return;
-      items.push({ name: name, hsn: hsn, size: size, mrp: mrp, qty: qty, unit: unit, rate: rate, gst: gst, disc_pct: discPct, disc_amt: Math.round(discAmt * 100) / 100 });
+      var itemObj = { name: name, hsn: hsn, size: size, mrp: mrp, qty: qty, unit: unit, rate: rate, gst: gst, disc_pct: discPct, disc_amt: Math.round(discAmt * 100) / 100 };
+      // Collect custom field values
+      (window._colDefs || []).forEach(function(c) {
+        if (c.custom) {
+          var cfInp = tr.querySelector('[data-f="' + c.key + '"]');
+          if (cfInp) itemObj[c.key] = cfInp.value.trim();
+        }
+      });
+      items.push(itemObj);
       subtotal += lineTotal;
       totalDiscount += discAmt;
       totalMrp += mrp * qty;
@@ -3005,10 +3058,11 @@
 
     // Purchase items table with column settings (same as sale invoice)
     var pdColSettings = (currentUser && currentUser.item_settings && currentUser.item_settings.pd_visible_columns) || {};
+    var _pdIs = (currentUser && currentUser.item_settings) || {};
     var pdColDefs = [
       { key:'name', label:'Item Name', always:true },
       { key:'hsn', label:'HSN/SAC' },
-      { key:'size', label:'Size' },
+      { key:'size', label: _pdIs.size_label || 'Size' },
       { key:'qty', label:'Qty', always:true },
       { key:'unit', label:'Unit' },
       { key:'rate', label:'Rate', always:true },
@@ -3016,6 +3070,18 @@
       { key:'gst', label:'GST%', always:true },
       { key:'amount', label:'Amount', always:true }
     ];
+    // Inject custom fields before Amount
+    var pdCustomFields = _pdIs.custom_fields_list || [];
+    if (pdCustomFields.length > 0) {
+      var pdAmtIdx = pdColDefs.length - 1;
+      pdCustomFields.forEach(function(cf) {
+        if (cf.name) {
+          var cfKey = 'cf_' + cf.name.toLowerCase().replace(/[^a-z0-9]/g, '_');
+          pdColDefs.splice(pdAmtIdx, 0, { key: cfKey, label: cf.name, custom: true });
+          pdAmtIdx++;
+        }
+      });
+    }
     pdColDefs.forEach(function(c) {
       if (c.always) { c.visible = true; return; }
       c.visible = pdColSettings[c.key] !== undefined ? pdColSettings[c.key] : true;
@@ -3043,14 +3109,19 @@
       var vis = c.visible ? '' : ' style="display:none"';
       html += '<th data-col="' + c.key + '"' + vis + '>' + c.label + '</th>';
     });
+    var pdVisColCount = 1;
+    pdColDefs.forEach(function(c) { if (c.visible) pdVisColCount++; });
+    pdVisColCount++;
+
     html += '<th style="width:30px"></th></tr></thead><tbody id="pdItemsBody"></tbody>' +
-    '<tfoot><tr class="items-total-row" id="pdItemsTotalRow">' +
-      '<td style="padding:0"></td>' +
-      '<td data-col="name">' +
-        '<button type="button" class="add-row-inline" id="pdAddItemBtn" title="Add Row">' +
-          '<svg width="18" height="18" fill="none" stroke="var(--primary)" stroke-width="2.5" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>' +
-          '<span>ADD ROW</span></button>' +
-        '<span class="total-label">TOTAL</span></td>';
+    '<tfoot>' +
+    '<tr class="items-addrow-row"><td colspan="' + pdVisColCount + '" style="padding:6px 12px;border-top:1px solid var(--border)">' +
+      '<button type="button" class="add-row-inline" id="pdAddItemBtn" title="Add Row">' +
+        '<svg width="18" height="18" fill="none" stroke="var(--primary)" stroke-width="2.5" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>' +
+        '<span>ADD ROW</span></button></td></tr>' +
+    '<tr class="items-total-row" id="pdItemsTotalRow">' +
+      '<td></td>' +
+      '<td data-col="name"><strong class="total-label">TOTAL</strong></td>';
     pdColDefs.forEach(function(c) {
       if (c.key === 'name') return;
       var vis = c.visible ? '' : ' style="display:none"';
@@ -3165,7 +3236,15 @@
       '<td data-col="unit"' + _pcv('unit') + '><select class="form-control pd-item-unit">' + unitOptions('Pcs') + '</select></td>' +
       '<td data-col="rate"' + _pcv('rate') + '><input class="form-control pd-item-rate" type="number" step="any" value="0" /></td>' +
       '<td data-col="disc_pct"' + _pcv('disc_pct') + '><input class="form-control pd-item-disc" type="number" min="0" max="100" step="0.01" value="0" /></td>' +
-      '<td data-col="gst"' + _pcv('gst') + '><select class="form-control pd-item-gst">' + gstOpts + '</select></td>' +
+      '<td data-col="gst"' + _pcv('gst') + '><select class="form-control pd-item-gst">' + gstOpts + '</select></td>';
+    // Custom field cells for purchase docs
+    var pdCfCells = '';
+    _pcd.forEach(function(c) {
+      if (c.custom) {
+        pdCfCells += '<td data-col="' + c.key + '"' + _pcv(c.key) + '><input class="form-control" data-f="' + c.key + '" placeholder="' + c.label + '" /></td>';
+      }
+    });
+    tr.innerHTML += pdCfCells +
       '<td data-col="amount"' + _pcv('amount') + ' class="pd-item-amt" style="text-align:right;white-space:nowrap">\u20B90</td>' +
       '<td><button type="button" class="remove-item" title="Remove">\u00D7</button></td>';
     tbody.appendChild(tr);
@@ -3261,7 +3340,15 @@
       tDisc += discAmt;
       tCgst += gstAmt / 2;
       tSgst += gstAmt / 2;
-      items.push({ name: name, hsn: hsn, size: size, unit: unit, qty: qty, rate: rate, gst: gst, disc_pct: discPct, disc_amt: Math.round(discAmt * 100) / 100, amount: afterDisc + gstAmt });
+      var pdItemObj = { name: name, hsn: hsn, size: size, unit: unit, qty: qty, rate: rate, gst: gst, disc_pct: discPct, disc_amt: Math.round(discAmt * 100) / 100, amount: afterDisc + gstAmt };
+      // Collect custom field values
+      (window._pdColDefs || []).forEach(function(c) {
+        if (c.custom) {
+          var cfInp = tr.querySelector('[data-f="' + c.key + '"]');
+          if (cfInp) pdItemObj[c.key] = cfInp.value.trim();
+        }
+      });
+      items.push(pdItemObj);
     });
     if (!items.length) return showToast('Add at least one item', 'error');
     var total = subtotal - tDisc + tCgst + tSgst;

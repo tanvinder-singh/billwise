@@ -879,9 +879,11 @@ tr:hover td { background:rgba(241,245,249,0.5); }
 }
 .col-settings-link:hover { text-decoration:underline; }
 
-/* Items table footer - total row + add button */
+/* Items table footer */
+.items-addrow-row { background:#fff; }
+.items-addrow-row td { padding:6px 12px !important; }
 .items-total-row { background:#f8fafc; border-top:2px solid var(--border); }
-.items-total-row td { padding:8px 10px; font-size:0.85rem; }
+.items-total-row td { padding:10px 10px; font-size:0.85rem; }
 .items-total-row strong { color:var(--text-primary); }
 .add-row-inline {
   background:none; border:none; cursor:pointer; padding:4px 8px;
@@ -892,8 +894,8 @@ tr:hover td { background:rgba(241,245,249,0.5); }
 .add-row-inline:hover { background:rgba(59,130,246,0.08); }
 .add-row-inline svg { flex-shrink:0; }
 .total-label {
-  display:inline-block; margin-left:24px; font-weight:700;
-  color:var(--text-muted); font-size:0.85rem; letter-spacing:0.03em;
+  font-weight:700; color:var(--text-muted); font-size:0.85rem;
+  letter-spacing:0.04em; text-transform:uppercase;
 }
 .row-num { font-size:0.85rem; }
 
