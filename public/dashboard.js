@@ -3050,6 +3050,10 @@
     $pageTitle.textContent = 'New ' + meta.singular;
     var today = new Date().toISOString().slice(0, 10);
     var html = '<form id="purchaseDocForm" class="form-card" onsubmit="return false">' +
+      '<div class="sale-header" style="margin-bottom:16px">' +
+        '<div class="sale-header-left"><h2 class="sale-title">' + meta.singular + '</h2>' +
+        '<div class="sale-type"><label class="type-opt active" data-type="credit"><input type="radio" name="pdPayType" value="credit" checked> Credit</label>' +
+        '<label class="type-opt" data-type="cash"><input type="radio" name="pdPayType" value="cash"> Cash</label></div></div></div>' +
       '<div class="form-grid">' +
       '<div class="form-group"><label>Supplier Name *</label><div class="ac-wrap"><input id="pdSupplier" class="form-control" placeholder="Type supplier name" autocomplete="off" required /><div class="ac-list" id="pdSupplierAC"></div></div></div>' +
       '<div class="form-group"><label>Supplier Phone</label><input id="pdPhone" class="form-control" placeholder="Phone" /></div>' +
@@ -3215,6 +3219,14 @@
         window.goTo('settings');
       });
     })();
+
+    // Credit / Cash toggle for purchase docs
+    document.querySelectorAll('#purchaseDocForm .type-opt input').forEach(function(radio) {
+      radio.addEventListener('change', function() {
+        document.querySelectorAll('#purchaseDocForm .type-opt').forEach(function(l) { l.classList.remove('active'); });
+        radio.parentElement.classList.add('active');
+      });
+    });
   }
 
   window.pdAddItemRow = pdAddItemRow;
@@ -3361,6 +3373,7 @@
     var total = subtotal - tDisc + tCgst + tSgst;
     var roundOff = Math.round(total) - total;
     var grandTotal = Math.round(total);
+    var pdPayType = (document.querySelector('input[name="pdPayType"]:checked') || {}).value || 'credit';
     var body = {
       doc_type: docType,
       doc_date: document.getElementById('pdDate').value,
@@ -3374,7 +3387,9 @@
       items: items, subtotal: subtotal, cgst: tCgst, sgst: tSgst, igst: 0,
       total: grandTotal, round_off: roundOff, discount: tDisc,
       notes: document.getElementById('pdNotes').value,
-      reference_number: document.getElementById('pdRefNo').value
+      reference_number: document.getElementById('pdRefNo').value,
+      payment_type: pdPayType,
+      status: pdPayType === 'cash' ? 'paid' : (PURCHASE_DOC_META[docType].statusDefault || 'unpaid')
     };
     api('POST', '/api/purchase-docs', body).then(function (res) {
       if (res.error) return showToast(res.error, 'error');
@@ -3616,6 +3631,10 @@
     $pageTitle.textContent = 'New Payment-Out';
     var today = new Date().toISOString().slice(0, 10);
     var html = '<form id="payOutForm" class="form-card" onsubmit="return false">' +
+      '<div class="sale-header" style="margin-bottom:16px">' +
+        '<div class="sale-header-left"><h2 class="sale-title">Payment-Out</h2>' +
+        '<div class="sale-type"><label class="type-opt active" data-type="credit"><input type="radio" name="poPayType" value="credit" checked> Credit</label>' +
+        '<label class="type-opt" data-type="cash"><input type="radio" name="poPayType" value="cash"> Cash</label></div></div></div>' +
       '<div class="form-grid">' +
       '<div class="form-group"><label>Party / Supplier Name *</label><div class="ac-wrap"><input id="poParty" class="form-control" placeholder="Type party name" autocomplete="off" required /><div class="ac-list" id="poPartyAC"></div></div></div>' +
       '<div class="form-group"><label>Amount *</label><input id="poAmount" class="form-control" type="number" step="0.01" min="0" placeholder="0.00" required /></div>' +
@@ -3630,6 +3649,14 @@
       '<button type="button" class="btn btn-primary" id="poSaveBtn">Save Payment</button>' +
       '<button type="button" class="btn btn-outline" onclick="window.goTo(\'payments-out\')">Cancel</button></div></form>';
     $content.innerHTML = html;
+
+    // Credit / Cash toggle for payment-out
+    document.querySelectorAll('#payOutForm .type-opt input').forEach(function(radio) {
+      radio.addEventListener('change', function() {
+        document.querySelectorAll('#payOutForm .type-opt').forEach(function(l) { l.classList.remove('active'); });
+        radio.parentElement.classList.add('active');
+      });
+    });
 
     // Party autocomplete
     acSearch(document.getElementById('poParty'), document.getElementById('poPartyAC'), '/api/parties',
@@ -3647,6 +3674,7 @@
       var amount = parseFloat(document.getElementById('poAmount').value);
       if (!party) return showToast('Party name is required', 'error');
       if (!amount || amount <= 0) return showToast('Amount must be greater than 0', 'error');
+      var poPayType = (document.querySelector('input[name="poPayType"]:checked') || {}).value || 'credit';
       var selectedBill = document.querySelector('.bill-select-card.selected');
       var body = {
         party_name: party, amount: amount,
@@ -3654,7 +3682,9 @@
         payment_mode: document.getElementById('poMode').value,
         reference_number: document.getElementById('poRef').value,
         notes: document.getElementById('poNotes').value,
-        purchase_id: selectedBill ? selectedBill.getAttribute('data-id') : null
+        purchase_id: selectedBill ? selectedBill.getAttribute('data-id') : null,
+        payment_type: poPayType,
+        status: poPayType === 'cash' ? 'paid' : 'unpaid'
       };
       api('POST', '/api/payments-out', body).then(function (res) {
         if (res.error) return showToast(res.error, 'error');
@@ -3928,6 +3958,10 @@
     var today = new Date().toISOString().slice(0, 10);
     var catOpts = EXPENSE_CATEGORIES.map(function (c) { return '<option value="' + c + '">' + c + '</option>'; }).join('');
     var html = '<form id="expenseForm" class="form-card" onsubmit="return false">' +
+      '<div class="sale-header" style="margin-bottom:16px">' +
+        '<div class="sale-header-left"><h2 class="sale-title">Expense</h2>' +
+        '<div class="sale-type"><label class="type-opt active" data-type="credit"><input type="radio" name="expPayType" value="credit" checked> Credit</label>' +
+        '<label class="type-opt" data-type="cash"><input type="radio" name="expPayType" value="cash"> Cash</label></div></div></div>' +
       '<div class="form-grid">' +
       '<div class="form-group"><label>Category *</label><select id="expCat" class="form-control">' + catOpts + '</select></div>' +
       '<div class="form-group"><label>Amount *</label><input id="expAmount" class="form-control" type="number" step="0.01" min="0" placeholder="0.00" required /></div>' +
@@ -3946,6 +3980,14 @@
       '<button type="button" class="btn btn-outline" onclick="window.goTo(\'expenses-list\')">Cancel</button></div></form>';
     $content.innerHTML = html;
 
+    // Credit / Cash toggle for expense
+    document.querySelectorAll('#expenseForm .type-opt input').forEach(function(radio) {
+      radio.addEventListener('change', function() {
+        document.querySelectorAll('#expenseForm .type-opt').forEach(function(l) { l.classList.remove('active'); });
+        radio.parentElement.classList.add('active');
+      });
+    });
+
     // GST toggle
     document.getElementById('expGstCheck').addEventListener('change', function () {
       document.getElementById('expGstAmtWrap').style.display = this.checked ? '' : 'none';
@@ -3963,6 +4005,7 @@
       var amount = parseFloat(document.getElementById('expAmount').value);
       if (!amount || amount <= 0) return showToast('Amount must be greater than 0', 'error');
       var gstCheck = document.getElementById('expGstCheck').checked;
+      var expPayType = (document.querySelector('input[name="expPayType"]:checked') || {}).value || 'credit';
       var body = {
         category: document.getElementById('expCat').value,
         amount: amount,
@@ -3973,7 +4016,9 @@
         reference_number: document.getElementById('expRef').value,
         gst_applicable: gstCheck,
         gst_amount: gstCheck ? (parseFloat(document.getElementById('expGstAmt').value) || 0) : 0,
-        notes: document.getElementById('expNotes').value
+        notes: document.getElementById('expNotes').value,
+        payment_type: expPayType,
+        status: expPayType === 'cash' ? 'paid' : 'unpaid'
       };
       api('POST', '/api/expenses', body).then(function (res) {
         if (res.error) return showToast(res.error, 'error');
