@@ -1437,3 +1437,27 @@ tr:hover td { background:rgba(241,245,249,0.5); }
   .topbar { padding:0 16px; }
   .user-name { display:none; }
 }
+
+/* ── Report download dropdowns ── */
+.dl-wrap { position:relative; display:inline-block; }
+.dl-btn {
+  display:inline-flex; align-items:center; gap:6px; padding:8px 14px;
+  border:1.5px solid var(--border); border-radius:var(--radius-sm); background:var(--surface);
+  font-size:0.8125rem; font-weight:600; color:var(--text); cursor:pointer; transition:all 0.15s;
+}
+.dl-btn:hover { border-color:var(--primary); color:var(--primary); }
+.dl-btn svg { pointer-events:none; }
+.dl-menu {
+  display:none; position:absolute; top:calc(100% + 4px); left:0; min-width:160px; z-index:50;
+  background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-sm);
+  box-shadow:var(--shadow-lg); overflow:hidden;
+}
+.dl-menu.open { display:block; }
+.dl-menu button {
+  display:flex; align-items:center; gap:8px; width:100%; padding:10px 14px; border:none;
+  background:none; font-size:0.8125rem; font-weight:500; color:var(--text); cursor:pointer;
+  text-align:left; transition:background 0.1s;
+}
+.dl-menu button:hover { background:var(--bg); }
+.dl-menu button svg { flex-shrink:0; }
+.dl-divider { border-top:1px solid var(--border); margin:0; }

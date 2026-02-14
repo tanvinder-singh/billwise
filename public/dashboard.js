@@ -207,6 +207,54 @@
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
   }
+
+  // ── Download as Excel (.xlsx) using SheetJS ──
+  function downloadExcel(rows, filename, sheetName) {
+    if (typeof XLSX === 'undefined') { showToast('Excel library not loaded', 'error'); return; }
+    var ws = XLSX.utils.aoa_to_sheet(rows);
+    // Auto-size columns
+    var colWidths = [];
+    rows.forEach(function(row) {
+      row.forEach(function(cell, ci) {
+        var len = String(cell == null ? '' : cell).length + 2;
+        if (!colWidths[ci] || len > colWidths[ci]) colWidths[ci] = len;
+      });
+    });
+    ws['!cols'] = colWidths.map(function(w) { return { wch: Math.min(w, 40) }; });
+    var wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, sheetName || 'Report');
+    XLSX.writeFile(wb, filename);
+  }
+
+  // ── Download as PDF using jsPDF + autoTable ──
+  function downloadPDF(rows, filename, title) {
+    if (typeof jspdf === 'undefined' && typeof window.jspdf === 'undefined') { showToast('PDF library not loaded', 'error'); return; }
+    var jsPDF = (window.jspdf && window.jspdf.jsPDF) || jspdf.jsPDF;
+    var headers = rows[0];
+    var body = rows.slice(1);
+    var doc = new jsPDF({ orientation: headers.length > 8 ? 'landscape' : 'portrait', unit: 'mm', format: 'a4' });
+    // Title
+    var bizName = (currentUser && (currentUser.business_name || currentUser.name)) || 'Report';
+    doc.setFontSize(14);
+    doc.text(bizName, 14, 15);
+    doc.setFontSize(10);
+    doc.setTextColor(100);
+    doc.text(title || filename.replace('.pdf', ''), 14, 22);
+    doc.text('Generated: ' + new Date().toLocaleDateString('en-IN'), 14, 27);
+    doc.setTextColor(0);
+    // Table
+    doc.autoTable({
+      head: [headers],
+      body: body,
+      startY: 32,
+      theme: 'grid',
+      styles: { fontSize: 7.5, cellPadding: 2 },
+      headStyles: { fillColor: [13, 110, 253], textColor: 255, fontStyle: 'bold', fontSize: 7.5 },
+      alternateRowStyles: { fillColor: [245, 247, 250] },
+      margin: { left: 10, right: 10 }
+    });
+    doc.save(filename);
+  }
   function esc(s) { return (s || '').replace(/"/g, '&quot;').replace(/</g, '&lt;'); }
   function fg(label, input) { return '<div class="form-group"><label>' + label + '</label>' + input + '</div>'; }
   function statCard(label, value, cls) {
@@ -4075,11 +4123,38 @@
       fg('Customer', '<div class="ac-wrap"><input id="rptCustomer" placeholder="All Customers" autocomplete="off"><div class="ac-dropdown" id="rptCustomerAc"></div></div>') +
       fg('Status', '<select id="rptStatus"><option value="">All</option><option value="paid">Paid</option><option value="unpaid">Unpaid</option><option value="partial">Partial</option></select>') +
     '</div>' +
-    '<div class="form-actions" style="margin-top:16px;flex-wrap:wrap;gap:8px">' +
+    '<div class="form-actions" style="margin-top:16px;flex-wrap:wrap;gap:8px;align-items:flex-start">' +
       '<button type="button" class="btn btn-primary" id="generateRptBtn">Generate Report</button>' +
-      '<button type="button" class="btn btn-outline" id="dlSalesCSV">\u2913 Sales CSV</button>' +
-      '<button type="button" class="btn btn-outline" id="dlItemsCSV">\u2913 Items CSV</button>' +
-      '<button type="button" class="btn btn-outline" id="dlGstCSV">\u2913 GST CSV</button>' +
+      // Sales download dropdown
+      '<div class="dl-wrap" id="dlSalesWrap">' +
+        '<button type="button" class="dl-btn" id="dlSalesBtn">' +
+          '<svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>' +
+          'Sales Report <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg></button>' +
+        '<div class="dl-menu" id="dlSalesMenu">' +
+          '<button type="button" data-fmt="csv"><svg width="15" height="15" fill="none" stroke="#16a34a" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg> Download CSV</button>' +
+          '<button type="button" data-fmt="excel"><svg width="15" height="15" fill="none" stroke="#0d6efd" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg> Download Excel</button>' +
+          '<button type="button" data-fmt="pdf"><svg width="15" height="15" fill="none" stroke="#dc2626" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg> Download PDF</button>' +
+        '</div></div>' +
+      // Items download dropdown
+      '<div class="dl-wrap" id="dlItemsWrap">' +
+        '<button type="button" class="dl-btn" id="dlItemsBtn">' +
+          '<svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>' +
+          'Items Report <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg></button>' +
+        '<div class="dl-menu" id="dlItemsMenu">' +
+          '<button type="button" data-fmt="csv"><svg width="15" height="15" fill="none" stroke="#16a34a" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg> Download CSV</button>' +
+          '<button type="button" data-fmt="excel"><svg width="15" height="15" fill="none" stroke="#0d6efd" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg> Download Excel</button>' +
+          '<button type="button" data-fmt="pdf"><svg width="15" height="15" fill="none" stroke="#dc2626" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg> Download PDF</button>' +
+        '</div></div>' +
+      // GST download dropdown
+      '<div class="dl-wrap" id="dlGstWrap">' +
+        '<button type="button" class="dl-btn" id="dlGstBtn">' +
+          '<svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>' +
+          'GST Report <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg></button>' +
+        '<div class="dl-menu" id="dlGstMenu">' +
+          '<button type="button" data-fmt="csv"><svg width="15" height="15" fill="none" stroke="#16a34a" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg> Download CSV</button>' +
+          '<button type="button" data-fmt="excel"><svg width="15" height="15" fill="none" stroke="#0d6efd" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg> Download Excel</button>' +
+          '<button type="button" data-fmt="pdf"><svg width="15" height="15" fill="none" stroke="#dc2626" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg> Download PDF</button>' +
+        '</div></div>' +
       '<button type="button" class="btn btn-outline" id="clearRptFilter" style="margin-left:auto;color:var(--text-muted)">Clear Filters</button>' +
     '</div></div><div id="reportContent"><div class="empty-state">Click "Generate Report" to view reports.</div></div>';
 
@@ -4127,51 +4202,105 @@
       });
     });
 
-    document.getElementById('dlSalesCSV').addEventListener('click', function () {
-      if (!reportData || !reportData.invoices) { showToast('Generate report first', 'error'); return; }
-      var csvRows = [['Invoice #', 'Date', 'Customer', 'Phone', 'Email', 'GSTIN', 'State', 'Taxable Amount', 'Discount', 'CGST', 'SGST', 'IGST', 'Round Off', 'Total', 'Status']];
-      reportData.invoices.forEach(function (inv) {
-        csvRows.push([inv.invoice_number, inv.invoice_date, inv.customer_name,
+    // ── Download dropdown toggle logic ──
+    function setupDlDropdown(btnId, menuId) {
+      var btn = document.getElementById(btnId);
+      var menu = document.getElementById(menuId);
+      if (!btn || !menu) return;
+      btn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        // close other menus
+        document.querySelectorAll('.dl-menu.open').forEach(function(m) { if (m !== menu) m.classList.remove('open'); });
+        menu.classList.toggle('open');
+      });
+    }
+    setupDlDropdown('dlSalesBtn', 'dlSalesMenu');
+    setupDlDropdown('dlItemsBtn', 'dlItemsMenu');
+    setupDlDropdown('dlGstBtn', 'dlGstMenu');
+    // Close all menus on outside click
+    document.addEventListener('click', function() {
+      document.querySelectorAll('.dl-menu.open').forEach(function(m) { m.classList.remove('open'); });
+    });
+
+    // ── Build row data helpers ──
+    function _salesRows() {
+      var rows = [['Invoice #', 'Date', 'Customer', 'Phone', 'Email', 'GSTIN', 'State', 'Taxable Amount', 'Discount', 'CGST', 'SGST', 'IGST', 'Round Off', 'Total', 'Status']];
+      (reportData.invoices || []).forEach(function (inv) {
+        rows.push([inv.invoice_number, inv.invoice_date, inv.customer_name,
           inv.customer_phone || '', inv.customer_email || '', inv.customer_gstin || '', inv.customer_state || '',
           (inv.subtotal || 0).toFixed(2), (inv.discount || 0).toFixed(2),
           (inv.cgst || 0).toFixed(2), (inv.sgst || 0).toFixed(2),
           (inv.igst || 0).toFixed(2), (inv.round_off || 0).toFixed(2),
           (inv.total || 0).toFixed(2), inv.status]);
       });
-      downloadCSV(csvRows, 'sales_report_' + _rptFileSuffix() + '.csv');
-      showToast('Sales CSV downloaded!', 'success');
-    });
-
-    // Item-wise CSV download
-    document.getElementById('dlItemsCSV').addEventListener('click', function () {
-      if (!reportData || !reportData.invoices) { showToast('Generate report first', 'error'); return; }
-      var csvRows = [['Invoice #', 'Date', 'Customer', 'Item Name', 'HSN/SAC', 'Qty', 'Unit', 'Rate', 'Disc%', 'GST%', 'Amount']];
-      reportData.invoices.forEach(function (inv) {
+      return rows;
+    }
+    function _itemsRows() {
+      var rows = [['Invoice #', 'Date', 'Customer', 'Item Name', 'HSN/SAC', 'Qty', 'Unit', 'Rate', 'Disc%', 'GST%', 'Amount']];
+      (reportData.invoices || []).forEach(function (inv) {
         (inv.items || []).forEach(function (item) {
           var lineTotal = (item.qty || 0) * (item.rate || 0);
           var discAmt = lineTotal * (item.disc_pct || 0) / 100;
           var afterDisc = lineTotal - discAmt;
           var gstAmt = afterDisc * (item.gst || 0) / 100;
-          csvRows.push([inv.invoice_number, inv.invoice_date, inv.customer_name,
+          rows.push([inv.invoice_number, inv.invoice_date, inv.customer_name,
             item.name, item.hsn || '', item.qty, item.unit || '',
             (item.rate || 0).toFixed(2), (item.disc_pct || 0),
             (item.gst || 0), (afterDisc + gstAmt).toFixed(2)]);
         });
       });
-      downloadCSV(csvRows, 'items_report_' + _rptFileSuffix() + '.csv');
-      showToast('Items CSV downloaded!', 'success');
-    });
-
-    document.getElementById('dlGstCSV').addEventListener('click', function () {
-      if (!reportData || !reportData.hsn_summary) { showToast('Generate report first', 'error'); return; }
-      var csvRows = [['HSN/SAC', 'GST Rate(%)', 'Taxable Amount', 'CGST Rate(%)', 'CGST Amount', 'SGST Rate(%)', 'SGST Amount', 'IGST Rate(%)', 'IGST Amount', 'Total Tax']];
-      reportData.hsn_summary.forEach(function (h) {
-        csvRows.push([h.hsn || '-', h.gst_rate, h.taxable.toFixed(2),
+      return rows;
+    }
+    function _gstRows() {
+      var rows = [['HSN/SAC', 'GST Rate(%)', 'Taxable Amount', 'CGST Rate(%)', 'CGST Amount', 'SGST Rate(%)', 'SGST Amount', 'IGST Rate(%)', 'IGST Amount', 'Total Tax']];
+      (reportData.hsn_summary || []).forEach(function (h) {
+        rows.push([h.hsn || '-', h.gst_rate, h.taxable.toFixed(2),
           h.cgst_rate || '', h.cgst.toFixed(2), h.sgst_rate || '', h.sgst.toFixed(2),
           h.igst_rate || '', h.igst.toFixed(2), h.total_tax.toFixed(2)]);
       });
-      downloadCSV(csvRows, 'gst_report_' + _rptFileSuffix() + '.csv');
-      showToast('GST CSV downloaded!', 'success');
+      return rows;
+    }
+
+    // ── Sales Report downloads ──
+    document.getElementById('dlSalesMenu').addEventListener('click', function(e) {
+      var btn = e.target.closest('button[data-fmt]');
+      if (!btn) return;
+      if (!reportData || !reportData.invoices) { showToast('Generate report first', 'error'); return; }
+      var fmt = btn.dataset.fmt;
+      var rows = _salesRows();
+      var suffix = _rptFileSuffix();
+      if (fmt === 'csv') { downloadCSV(rows, 'sales_report_' + suffix + '.csv'); showToast('Sales CSV downloaded!', 'success'); }
+      else if (fmt === 'excel') { downloadExcel(rows, 'sales_report_' + suffix + '.xlsx', 'Sales Report'); showToast('Sales Excel downloaded!', 'success'); }
+      else if (fmt === 'pdf') { downloadPDF(rows, 'sales_report_' + suffix + '.pdf', 'Sales Report (' + (reportData.invoices.length) + ' invoices)'); showToast('Sales PDF downloaded!', 'success'); }
+      document.getElementById('dlSalesMenu').classList.remove('open');
+    });
+
+    // ── Items Report downloads ──
+    document.getElementById('dlItemsMenu').addEventListener('click', function(e) {
+      var btn = e.target.closest('button[data-fmt]');
+      if (!btn) return;
+      if (!reportData || !reportData.invoices) { showToast('Generate report first', 'error'); return; }
+      var fmt = btn.dataset.fmt;
+      var rows = _itemsRows();
+      var suffix = _rptFileSuffix();
+      if (fmt === 'csv') { downloadCSV(rows, 'items_report_' + suffix + '.csv'); showToast('Items CSV downloaded!', 'success'); }
+      else if (fmt === 'excel') { downloadExcel(rows, 'items_report_' + suffix + '.xlsx', 'Items Report'); showToast('Items Excel downloaded!', 'success'); }
+      else if (fmt === 'pdf') { downloadPDF(rows, 'items_report_' + suffix + '.pdf', 'Item-wise Report'); showToast('Items PDF downloaded!', 'success'); }
+      document.getElementById('dlItemsMenu').classList.remove('open');
+    });
+
+    // ── GST Report downloads ──
+    document.getElementById('dlGstMenu').addEventListener('click', function(e) {
+      var btn = e.target.closest('button[data-fmt]');
+      if (!btn) return;
+      if (!reportData || !reportData.hsn_summary) { showToast('Generate report first', 'error'); return; }
+      var fmt = btn.dataset.fmt;
+      var rows = _gstRows();
+      var suffix = _rptFileSuffix();
+      if (fmt === 'csv') { downloadCSV(rows, 'gst_report_' + suffix + '.csv'); showToast('GST CSV downloaded!', 'success'); }
+      else if (fmt === 'excel') { downloadExcel(rows, 'gst_report_' + suffix + '.xlsx', 'GST Report'); showToast('GST Excel downloaded!', 'success'); }
+      else if (fmt === 'pdf') { downloadPDF(rows, 'gst_report_' + suffix + '.pdf', 'GST Summary (HSN-wise)'); showToast('GST PDF downloaded!', 'success'); }
+      document.getElementById('dlGstMenu').classList.remove('open');
     });
 
     // Auto-generate on load
