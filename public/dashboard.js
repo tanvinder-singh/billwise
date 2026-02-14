@@ -4076,41 +4076,91 @@
       '</div>' +
       '</div>' +
 
-      // ── Item Settings Card ──
+      // ── Item Settings Card (Vyapar-style 3 column) ──
       (function() {
         var is = (u.item_settings && typeof u.item_settings === 'object') ? u.item_settings : {};
         var cats = is.categories || ['Electronics', 'Clothing', 'Food', 'Medicine', 'Other'];
+        var cf = is.custom_fields_list || [];
+        var cfHtml = '';
+        cf.forEach(function(f, i) {
+          cfHtml += '<div class="cf-row" data-idx="' + i + '">' +
+            '<input class="cf-name-input" value="' + esc(f.name || '') + '" placeholder="Field name" />' +
+            '<button type="button" class="cf-remove-btn" title="Remove">&times;</button></div>';
+        });
+
         return '<div class="form-card"><h3>Item Settings</h3>' +
-          '<p style="color:var(--text-muted);font-size:0.875rem;margin:0 0 16px">Enable or disable optional item features. These settings affect Add/Edit Item forms and item listings.</p>' +
-          '<div class="item-settings-toggles">' +
-            '<div class="setting-toggle-row">' +
-              '<div class="toggle-info"><strong>Stock Maintenance</strong><span>Track quantity in stock, get low stock alerts</span></div>' +
-              '<label class="toggle-switch"><input type="checkbox" id="isStock"' + (is.stock ? ' checked' : '') + '><span class="toggle-slider"></span></label>' +
+          '<p style="color:var(--text-muted);font-size:0.875rem;margin:0 0 20px">Configure item features, additional fields, and custom fields. These settings affect Add/Edit Item forms and invoices.</p>' +
+          '<div class="is-three-col">' +
+
+          // ─── Column 1: Item Settings ───
+          '<div class="is-col">' +
+            '<h4 class="is-col-title">Item Settings</h4>' +
+            '<label class="is-check-row"><input type="checkbox" id="isEnableItem" ' + (is.enable_item !== false ? 'checked' : '') + '><span>Enable Item</span></label>' +
+            '<div class="is-inline-row" style="margin:4px 0 8px 28px">' +
+              '<span class="is-label-sm">What do you sell?</span>' +
+              '<select id="isSellType" class="is-select-sm"><option value="product"' + (is.sell_type === 'service' ? '' : ' selected') + '>Product/Service</option><option value="service"' + (is.sell_type === 'service' ? ' selected' : '') + '>Service</option></select>' +
             '</div>' +
-            '<div class="setting-sub-row" id="stockThresholdRow" style="' + (is.stock ? '' : 'display:none') + '">' +
-              fg('Low Stock Alert Threshold', '<input type="number" id="isLowStockThreshold" value="' + (is.low_stock_threshold || 10) + '" min="0" step="1" placeholder="10">') +
+            '<label class="is-check-row"><input type="checkbox" id="isBarcodeScan" ' + (is.barcode_scan ? 'checked' : '') + '><span>Barcode Scan</span></label>' +
+            '<label class="is-check-row"><input type="checkbox" id="isStock" ' + (is.stock ? 'checked' : '') + '><span>Stock Maintenance</span></label>' +
+            '<div class="is-sub-row" id="stockThresholdRow" style="' + (is.stock ? '' : 'display:none') + '">' +
+              '<label class="is-label-sm">Low Stock Alert Threshold</label>' +
+              '<input type="number" id="isLowStockThreshold" class="is-input-sm" value="' + (is.low_stock_threshold || 10) + '" min="0" step="1">' +
             '</div>' +
-            '<div class="setting-toggle-row">' +
-              '<div class="toggle-info"><strong>Item Category</strong><span>Group items by category for easy filtering</span></div>' +
-              '<label class="toggle-switch"><input type="checkbox" id="isCategory"' + (is.category ? ' checked' : '') + '><span class="toggle-slider"></span></label>' +
+            '<label class="is-check-row"><input type="checkbox" id="isShowLowStockDialog" ' + (is.show_low_stock_dialog ? 'checked' : '') + '><span>Show Low Stock Dialog</span></label>' +
+            '<label class="is-check-row"><input type="checkbox" id="isItemsUnit" ' + (is.items_unit !== false ? 'checked' : '') + '><span>Items Unit</span></label>' +
+            '<label class="is-check-row is-indent"><input type="checkbox" id="isDefaultUnit" ' + (is.default_unit ? 'checked' : '') + '><span>Default Unit</span></label>' +
+            '<label class="is-check-row"><input type="checkbox" id="isCategory" ' + (is.category ? 'checked' : '') + '><span>Item Category</span></label>' +
+            '<div class="is-sub-row" id="categoryListRow" style="' + (is.category ? '' : 'display:none') + '">' +
+              '<input type="text" id="isCategoryList" class="is-input-full" value="' + esc(cats.join(', ')) + '" placeholder="Electronics, Clothing, Food...">' +
             '</div>' +
-            '<div class="setting-sub-row" id="categoryListRow" style="' + (is.category ? '' : 'display:none') + '">' +
-              fg('Categories (comma-separated)', '<input type="text" id="isCategoryList" value="' + esc(cats.join(', ')) + '" placeholder="Electronics, Clothing, Food...">') +
-            '</div>' +
-            '<div class="setting-toggle-row">' +
-              '<div class="toggle-info"><strong>Batch Tracking</strong><span>Track batch no., manufacturing date, expiry date, model no.</span></div>' +
-              '<label class="toggle-switch"><input type="checkbox" id="isBatchTracking"' + (is.batch_tracking ? ' checked' : '') + '><span class="toggle-slider"></span></label>' +
-            '</div>' +
-            '<div class="setting-toggle-row">' +
-              '<div class="toggle-info"><strong>Party Wise Item Rate</strong><span>Set different prices for different customers</span></div>' +
-              '<label class="toggle-switch"><input type="checkbox" id="isPartyRate"' + (is.party_rate ? ' checked' : '') + '><span class="toggle-slider"></span></label>' +
-            '</div>' +
-            '<div class="setting-toggle-row">' +
-              '<div class="toggle-info"><strong>Custom Fields</strong><span>Add your own custom fields to items</span></div>' +
-              '<label class="toggle-switch"><input type="checkbox" id="isCustomFields"' + (is.custom_fields ? ' checked' : '') + '><span class="toggle-slider"></span></label>' +
+            '<label class="is-check-row"><input type="checkbox" id="isPartyRate" ' + (is.party_rate ? 'checked' : '') + '><span>Party Wise Item Rate</span></label>' +
+            '<label class="is-check-row"><input type="checkbox" id="isDescription" ' + (is.description ? 'checked' : '') + '><span>Description</span></label>' +
+            '<label class="is-check-row"><input type="checkbox" id="isItemTax" ' + (is.item_tax !== false ? 'checked' : '') + '><span>Item wise Tax</span></label>' +
+            '<label class="is-check-row"><input type="checkbox" id="isItemDiscount" ' + (is.item_discount !== false ? 'checked' : '') + '><span>Item wise Discount</span></label>' +
+            '<div class="is-inline-row" style="margin-top:12px">' +
+              '<span class="is-label-sm">Quantity <small style="color:var(--text-muted)">(upto Decimal Places)</small></span>' +
+              '<input type="number" id="isQtyDecimals" class="is-input-sm" value="' + (is.qty_decimals !== undefined ? is.qty_decimals : 2) + '" min="0" max="4" step="1" style="width:50px">' +
+              '<small style="color:var(--text-muted);margin-left:4px">e.g. ' + (is.qty_decimals === 0 ? '1' : is.qty_decimals === 1 ? '1.0' : '1.00') + '</small>' +
             '</div>' +
           '</div>' +
-        '</div>';
+
+          // ─── Column 2: Additional Item Fields ───
+          '<div class="is-col">' +
+            '<h4 class="is-col-title">Additional Item Fields</h4>' +
+            '<h5 class="is-section-title">MRP/Price</h5>' +
+            '<div class="is-check-inline"><label class="is-check-row"><input type="checkbox" id="isMrp" ' + (is.mrp !== false ? 'checked' : '') + '><span>MRP</span></label>' +
+              '<input type="text" id="isMrpLabel" class="is-input-sm" value="' + esc(is.mrp_label || 'MRP') + '" placeholder="MRP" style="width:80px"></div>' +
+            '<label class="is-check-row is-indent"><input type="checkbox" id="isCalcSalePrice" ' + (is.calc_sale_price ? 'checked' : '') + '><span>Calculate Sale Price From MRP & Disc.</span></label>' +
+            '<label class="is-check-row is-indent"><input type="checkbox" id="isMrpBatch" ' + (is.mrp_for_batch !== false ? 'checked' : '') + '><span>Use MRP for Batch Tracking</span></label>' +
+
+            '<h5 class="is-section-title">Serial No. Tracking</h5>' +
+            '<div class="is-check-inline"><label class="is-check-row"><input type="checkbox" id="isSerialNo" ' + (is.serial_no ? 'checked' : '') + '><span>Serial No./ IMEI No. etc</span></label>' +
+              '<input type="text" id="isSerialLabel" class="is-input-sm" value="' + esc(is.serial_label || 'Serial No.') + '" placeholder="Serial No." style="width:90px"></div>' +
+
+            '<h5 class="is-section-title">Batch Tracking</h5>' +
+            '<div class="is-check-inline"><label class="is-check-row"><input type="checkbox" id="isBatchNo" ' + (is.batch_tracking ? 'checked' : '') + '><span>Batch No.</span></label>' +
+              '<input type="text" id="isBatchLabel" class="is-input-sm" value="' + esc(is.batch_label || 'SIZE') + '" placeholder="Batch No." style="width:80px"></div>' +
+            '<div class="is-check-inline is-indent"><label class="is-check-row"><input type="checkbox" id="isExpDate" ' + (is.exp_date ? 'checked' : '') + '><span>Exp Date</span></label>' +
+              '<select id="isExpDateFmt" class="is-select-sm"><option value="mm/yy"' + (is.exp_date_fmt === 'dd/mm/yy' ? '' : ' selected') + '>mm/yy</option><option value="dd/mm/yy"' + (is.exp_date_fmt === 'dd/mm/yy' ? ' selected' : '') + '>dd/mm/yy</option></select>' +
+              '<input type="text" id="isExpDateLabel" class="is-input-sm" value="' + esc(is.exp_date_label || 'Exp. Date') + '" placeholder="Exp. Date" style="width:80px"></div>' +
+            '<div class="is-check-inline is-indent"><label class="is-check-row"><input type="checkbox" id="isMfgDate" ' + (is.mfg_date ? 'checked' : '') + '><span>Mfg Date</span></label>' +
+              '<select id="isMfgDateFmt" class="is-select-sm"><option value="dd/mm/yy" selected>dd/mm/yy</option><option value="mm/yy">mm/yy</option></select>' +
+              '<input type="text" id="isMfgDateLabel" class="is-input-sm" value="' + esc(is.mfg_date_label || 'Mfg. Date') + '" placeholder="Mfg. Date" style="width:80px"></div>' +
+            '<div class="is-check-inline"><label class="is-check-row"><input type="checkbox" id="isModelNo" ' + (is.model_no ? 'checked' : '') + '><span>Model No.</span></label>' +
+              '<input type="text" id="isModelLabel" class="is-input-sm" value="' + esc(is.model_label || 'Microne') + '" placeholder="Microne" style="width:80px"></div>' +
+            '<div class="is-check-inline"><label class="is-check-row"><input type="checkbox" id="isSize" ' + (is.size_field !== false ? 'checked' : '') + '><span>Size</span></label>' +
+              '<input type="text" id="isSizeLabel" class="is-input-sm" value="' + esc(is.size_label || 'meters') + '" placeholder="meters" style="width:80px"></div>' +
+          '</div>' +
+
+          // ─── Column 3: Item Custom Fields ───
+          '<div class="is-col">' +
+            '<h4 class="is-col-title">Item Custom Fields</h4>' +
+            '<div id="cfList">' + cfHtml + '</div>' +
+            '<button type="button" class="btn btn-outline btn-sm" id="addCfBtn" style="margin-top:8px">+ Add Custom Field</button>' +
+          '</div>' +
+
+          '</div>' + // end .is-three-col
+        '</div>'; // end .form-card
       })() +
 
       '<div class="form-card"><h3>Bank & Payment Details</h3>' +
@@ -4327,6 +4377,27 @@
       });
     }
 
+    // Custom fields add/remove
+    var addCfBtn = document.getElementById('addCfBtn');
+    if (addCfBtn) {
+      addCfBtn.addEventListener('click', function() {
+        var list = document.getElementById('cfList');
+        var idx = list.children.length;
+        var div = document.createElement('div');
+        div.className = 'cf-row';
+        div.dataset.idx = idx;
+        div.innerHTML = '<input class="cf-name-input" value="" placeholder="Field name" />' +
+          '<button type="button" class="cf-remove-btn" title="Remove">&times;</button>';
+        list.appendChild(div);
+        div.querySelector('.cf-remove-btn').addEventListener('click', function() { div.remove(); });
+        div.querySelector('.cf-name-input').focus();
+      });
+    }
+    // Wire up existing remove buttons
+    document.querySelectorAll('#cfList .cf-remove-btn').forEach(function(btn) {
+      btn.addEventListener('click', function() { btn.closest('.cf-row').remove(); });
+    });
+
     // Form submit
     document.getElementById('settingsForm').addEventListener('submit', function (e) {
       e.preventDefault();
@@ -4353,17 +4424,61 @@
           if (ld === '__REMOVE__') return '';
           return ld || (currentUser ? currentUser.logo : '') || '';
         })(),
-        item_settings: {
-          stock: document.getElementById('isStock') ? document.getElementById('isStock').checked : false,
-          category: document.getElementById('isCategory') ? document.getElementById('isCategory').checked : false,
-          batch_tracking: document.getElementById('isBatchTracking') ? document.getElementById('isBatchTracking').checked : false,
-          party_rate: document.getElementById('isPartyRate') ? document.getElementById('isPartyRate').checked : false,
-          custom_fields: document.getElementById('isCustomFields') ? document.getElementById('isCustomFields').checked : false,
-          low_stock_threshold: parseInt(document.getElementById('isLowStockThreshold') ? document.getElementById('isLowStockThreshold').value : '10') || 10,
-          categories: (document.getElementById('isCategoryList') ? document.getElementById('isCategoryList').value : 'Electronics, Clothing, Food, Medicine, Other').split(',').map(function(c) { return c.trim(); }).filter(Boolean),
-          visible_columns: (currentUser && currentUser.item_settings && currentUser.item_settings.visible_columns) || {},
-          pd_visible_columns: (currentUser && currentUser.item_settings && currentUser.item_settings.pd_visible_columns) || {}
-        }
+        item_settings: (function() {
+          function _el(id) { return document.getElementById(id); }
+          function _chk(id) { var e = _el(id); return e ? e.checked : false; }
+          function _val(id, def) { var e = _el(id); return e ? e.value : (def || ''); }
+          // Collect custom fields
+          var cfRows = document.querySelectorAll('#cfList .cf-row');
+          var cfList = [];
+          cfRows.forEach(function(r) {
+            var nameInp = r.querySelector('.cf-name-input');
+            if (nameInp && nameInp.value.trim()) cfList.push({ name: nameInp.value.trim() });
+          });
+          return {
+            // Column 1: Item Settings
+            enable_item: _chk('isEnableItem'),
+            sell_type: _val('isSellType', 'product'),
+            barcode_scan: _chk('isBarcodeScan'),
+            stock: _chk('isStock'),
+            low_stock_threshold: parseInt(_val('isLowStockThreshold', '10')) || 10,
+            show_low_stock_dialog: _chk('isShowLowStockDialog'),
+            items_unit: _chk('isItemsUnit'),
+            default_unit: _chk('isDefaultUnit'),
+            category: _chk('isCategory'),
+            categories: (_val('isCategoryList', 'Electronics, Clothing, Food, Medicine, Other')).split(',').map(function(c) { return c.trim(); }).filter(Boolean),
+            party_rate: _chk('isPartyRate'),
+            description: _chk('isDescription'),
+            item_tax: _chk('isItemTax'),
+            item_discount: _chk('isItemDiscount'),
+            qty_decimals: parseInt(_val('isQtyDecimals', '2')) || 0,
+            // Column 2: Additional Item Fields
+            mrp: _chk('isMrp'),
+            mrp_label: _val('isMrpLabel', 'MRP'),
+            calc_sale_price: _chk('isCalcSalePrice'),
+            mrp_for_batch: _chk('isMrpBatch'),
+            serial_no: _chk('isSerialNo'),
+            serial_label: _val('isSerialLabel', 'Serial No.'),
+            batch_tracking: _chk('isBatchNo'),
+            batch_label: _val('isBatchLabel', 'SIZE'),
+            exp_date: _chk('isExpDate'),
+            exp_date_fmt: _val('isExpDateFmt', 'mm/yy'),
+            exp_date_label: _val('isExpDateLabel', 'Exp. Date'),
+            mfg_date: _chk('isMfgDate'),
+            mfg_date_fmt: _val('isMfgDateFmt', 'dd/mm/yy'),
+            mfg_date_label: _val('isMfgDateLabel', 'Mfg. Date'),
+            model_no: _chk('isModelNo'),
+            model_label: _val('isModelLabel', 'Microne'),
+            size_field: _chk('isSize'),
+            size_label: _val('isSizeLabel', 'meters'),
+            // Column 3: Custom Fields
+            custom_fields: cfList.length > 0,
+            custom_fields_list: cfList,
+            // Preserve column visibility prefs
+            visible_columns: (currentUser && currentUser.item_settings && currentUser.item_settings.visible_columns) || {},
+            pd_visible_columns: (currentUser && currentUser.item_settings && currentUser.item_settings.pd_visible_columns) || {}
+          };
+        })()
       };
       var submitBtn = e.target.querySelector('button[type="submit"]');
       if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Saving...'; }
