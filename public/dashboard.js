@@ -1682,15 +1682,72 @@
       '<div class="detail-row"><span class="detail-label">State of supply</span><select id="posState">' + stateOptions(currentUser ? currentUser.state : '') + '</select></div>' +
     '</div></div>';
 
-    // Items table
-    html += '<div class="sale-items"><div class="table-wrap"><table class="items-table" style="min-width:1100px"><thead><tr>' +
-      '<th style="width:15%">Item Name</th><th style="width:7%">HSN</th>' +
-      '<th style="width:6%">Size</th><th style="width:7%">MRP</th>' +
-      '<th style="width:5%">Qty</th><th style="width:7%">Unit</th>' +
-      '<th style="width:8%">Price/Unit</th><th style="width:5%">Disc%</th><th style="width:7%">Disc\u20B9</th>' +
-      '<th style="width:6%">GST%</th><th style="width:7%">GST\u20B9</th><th style="width:8%">Amount</th><th style="width:30px"></th>' +
-    '</tr></thead><tbody id="itemsBody"></tbody></table></div>' +
-    '<div class="sale-items-actions"><button type="button" class="btn btn-outline btn-sm" id="addItemBtn">+ Add Item</button></div></div>';
+    // Items table - read column visibility from item_settings
+    var colSettings = (currentUser && currentUser.item_settings && currentUser.item_settings.visible_columns) || {};
+    var colDefs = [
+      { key:'name', label:'Item Name', always:true },
+      { key:'hsn', label:'HSN/SAC' },
+      { key:'size', label:'Size' },
+      { key:'mrp', label:'MRP' },
+      { key:'qty', label:'Qty', always:true },
+      { key:'unit', label:'Unit' },
+      { key:'rate', label:'Price/Unit', always:true },
+      { key:'disc_pct', label:'Disc%' },
+      { key:'disc_amt', label:'Disc\u20B9' },
+      { key:'gst', label:'GST%', always:true },
+      { key:'gst_amount', label:'GST\u20B9' },
+      { key:'amount', label:'Amount', always:true }
+    ];
+    // Default: all visible
+    colDefs.forEach(function(c) {
+      if (c.always) { c.visible = true; return; }
+      c.visible = colSettings[c.key] !== undefined ? colSettings[c.key] : true;
+    });
+    window._colDefs = colDefs;
+
+    html += '<div class="sale-items"><div class="sale-items-toolbar">' +
+      '<span class="toolbar-label">Items</span>' +
+      '<button type="button" class="col-settings-btn" id="colSettingsBtn" title="Column settings">' +
+      '<svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>' +
+      '</button></div>';
+
+    // Column settings dropdown panel
+    html += '<div class="col-settings-panel" id="colSettingsPanel">';
+    colDefs.forEach(function(c) {
+      if (c.always) return; // Can't toggle required columns
+      html += '<label class="col-toggle-item"><input type="checkbox" data-col="' + c.key + '"' + (c.visible ? ' checked' : '') + '>' +
+        '<span>' + c.label + '</span></label>';
+    });
+    html += '<div class="col-settings-link" id="colMoreSettings" style="cursor:pointer"><svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="vertical-align:-2px"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg> More Settings</div></div>';
+
+    html += '<div class="table-wrap"><table class="items-table" id="itemsTable"><thead><tr id="itemsHead">' +
+      '<th style="width:36px;text-align:center">#</th>';
+    colDefs.forEach(function(c) {
+      var vis = c.visible ? '' : ' style="display:none"';
+      html += '<th data-col="' + c.key + '"' + vis + '>' + c.label + '</th>';
+    });
+    html += '<th style="width:30px"></th></tr></thead><tbody id="itemsBody"></tbody>' +
+    '<tfoot>' +
+    '<tr class="items-total-row" id="itemsTotalRow">' +
+      '<td style="padding:0"></td>' +
+      '<td data-col="name">' +
+        '<button type="button" class="add-row-inline" id="addItemBtn" title="Add Row">' +
+          '<svg width="18" height="18" fill="none" stroke="var(--primary)" stroke-width="2.5" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>' +
+          '<span>ADD ROW</span></button>' +
+        '<span class="total-label">TOTAL</span>' +
+      '</td>';
+    colDefs.forEach(function(c) {
+      if (c.key === 'name') return;
+      var vis = c.visible ? '' : ' style="display:none"';
+      if (c.key === 'amount') {
+        html += '<td data-col="amount"' + vis + '><strong id="footerTotal">\u20B90</strong></td>';
+      } else if (c.key === 'qty') {
+        html += '<td data-col="qty"' + vis + '><strong id="footerQty">0</strong></td>';
+      } else {
+        html += '<td data-col="' + c.key + '"' + vis + '></td>';
+      }
+    });
+    html += '<td></td></tr></tfoot></table></div></div>';
 
     // Bottom: Notes (left) + Totals (right)
     html += '<div class="sale-bottom"><div class="sale-notes">' +
@@ -1724,6 +1781,60 @@
     document.getElementById('posState').addEventListener('change', recalculate);
     document.getElementById('roundOffChk').addEventListener('change', recalculate);
     document.getElementById('invoiceForm').addEventListener('submit', function (e) { e.preventDefault(); submitInvoice(); });
+
+    // Column settings gear button
+    (function() {
+      var settingsBtn = document.getElementById('colSettingsBtn');
+      var settingsPanel = document.getElementById('colSettingsPanel');
+      if (!settingsBtn || !settingsPanel) return;
+      settingsBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        settingsPanel.classList.toggle('open');
+      });
+      // Close when clicking outside
+      document.addEventListener('click', function(ev) {
+        if (!settingsPanel.contains(ev.target) && ev.target !== settingsBtn) {
+          settingsPanel.classList.remove('open');
+        }
+      });
+      // Toggle column visibility
+      settingsPanel.querySelectorAll('input[data-col]').forEach(function(chk) {
+        chk.addEventListener('change', function() {
+          var col = chk.dataset.col;
+          var show = chk.checked;
+          // Update _colDefs
+          (window._colDefs || []).forEach(function(c) { if (c.key === col) c.visible = show; });
+          // Toggle header
+          var th = document.querySelector('#itemsHead th[data-col="' + col + '"]');
+          if (th) th.style.display = show ? '' : 'none';
+          // Toggle all body + footer cells
+          document.querySelectorAll('#itemsTable td[data-col="' + col + '"]').forEach(function(td) {
+            td.style.display = show ? '' : 'none';
+          });
+          // Auto-save column preferences
+          _saveColPrefs();
+        });
+      });
+      // "More Settings" link -> go to settings page
+      var moreLink = document.getElementById('colMoreSettings');
+      if (moreLink) moreLink.addEventListener('click', function() {
+        settingsPanel.classList.remove('open');
+        window.goTo('settings');
+      });
+    })();
+
+    // Save column prefs to server
+    function _saveColPrefs() {
+      var prefs = {};
+      (window._colDefs || []).forEach(function(c) {
+        if (!c.always) prefs[c.key] = c.visible;
+      });
+      var is = (currentUser && currentUser.item_settings) ? Object.assign({}, currentUser.item_settings) : {};
+      is.visible_columns = prefs;
+      api('PUT', '/api/auth/profile', { item_settings: is }).then(function(data) {
+        if (data && data.user) currentUser = data.user;
+      });
+    }
 
     // Sale type toggle
     document.querySelectorAll('.type-opt input').forEach(function (radio) {
@@ -1773,19 +1884,26 @@
     }).join('');
     var tr = document.createElement('tr');
     tr.id = 'item-' + idx;
+    var _cd = window._colDefs || [];
+    function _cv(key) {
+      for (var i = 0; i < _cd.length; i++) { if (_cd[i].key === key) return _cd[i].visible ? '' : ' style="display:none"'; }
+      return '';
+    }
+    var rowNum = document.getElementById('itemsBody') ? document.getElementById('itemsBody').children.length + 1 : 1;
     tr.innerHTML =
-      '<td><div class="ac-wrap"><input data-f="name" placeholder="Item name" autocomplete="off"><div class="ac-dropdown"></div></div></td>' +
-      '<td><input data-f="hsn" placeholder="HSN"></td>' +
-      '<td><input data-f="size" placeholder="Size"></td>' +
-      '<td><input data-f="mrp" type="number" min="0" step="0.01" placeholder="0"></td>' +
-      '<td><input data-f="qty" type="number" min="1" value="1"></td>' +
-      '<td><select data-f="unit">' + unitOptions('Pcs') + '</select></td>' +
-      '<td><input data-f="rate" type="number" min="0" step="0.01" placeholder="0"></td>' +
-      '<td><input data-f="disc_pct" type="number" min="0" max="100" step="0.01" placeholder="0"></td>' +
-      '<td class="amt" data-f="disc_amt">\u20B90</td>' +
-      '<td><select data-f="gst">' + gstOpts + '</select></td>' +
-      '<td class="amt" data-f="gst_amount">\u20B90</td>' +
-      '<td class="amt" data-f="amount">\u20B90</td>' +
+      '<td class="row-num" style="text-align:center;color:var(--text-muted);font-weight:500">' + rowNum + '</td>' +
+      '<td data-col="name"' + _cv('name') + '><div class="ac-wrap"><input data-f="name" placeholder="Item name" autocomplete="off"><div class="ac-dropdown"></div></div></td>' +
+      '<td data-col="hsn"' + _cv('hsn') + '><input data-f="hsn" placeholder="HSN"></td>' +
+      '<td data-col="size"' + _cv('size') + '><input data-f="size" placeholder="Size"></td>' +
+      '<td data-col="mrp"' + _cv('mrp') + '><input data-f="mrp" type="number" min="0" step="0.01" placeholder="0"></td>' +
+      '<td data-col="qty"' + _cv('qty') + '><input data-f="qty" type="number" min="1" value="1"></td>' +
+      '<td data-col="unit"' + _cv('unit') + '><select data-f="unit">' + unitOptions('Pcs') + '</select></td>' +
+      '<td data-col="rate"' + _cv('rate') + '><input data-f="rate" type="number" min="0" step="0.01" placeholder="0"></td>' +
+      '<td data-col="disc_pct"' + _cv('disc_pct') + '><input data-f="disc_pct" type="number" min="0" max="100" step="0.01" placeholder="0"></td>' +
+      '<td data-col="disc_amt"' + _cv('disc_amt') + ' class="amt" data-f="disc_amt">\u20B90</td>' +
+      '<td data-col="gst"' + _cv('gst') + '><select data-f="gst">' + gstOpts + '</select></td>' +
+      '<td data-col="gst_amount"' + _cv('gst_amount') + ' class="amt" data-f="gst_amount">\u20B90</td>' +
+      '<td data-col="amount"' + _cv('amount') + ' class="amt" data-f="amount">\u20B90</td>' +
       '<td><button type="button" class="remove-item" title="Remove">\u00D7</button></td>';
     document.getElementById('itemsBody').appendChild(tr);
     tr.querySelectorAll('input').forEach(function (el) { el.addEventListener('input', recalculate); });
@@ -1838,11 +1956,17 @@
   function recalculate() {
     var rows = document.querySelectorAll('#itemsBody tr');
     var subtotal = 0, totalDiscount = 0, totalCgst = 0, totalSgst = 0, totalIgst = 0, totalMrpVal = 0;
+    var totalQty = 0;
     var pos = document.getElementById('posState').value;
     var businessState = currentUser ? currentUser.state : '';
     var isIntra = pos && businessState && pos === businessState;
 
+    var rowIdx = 0;
     rows.forEach(function (tr) {
+      // Update row numbers
+      rowIdx++;
+      var numCell = tr.querySelector('.row-num');
+      if (numCell) numCell.textContent = rowIdx;
       var qty = parseFloat(tr.querySelector('[data-f="qty"]').value) || 0;
       var rate = parseFloat(tr.querySelector('[data-f="rate"]').value) || 0;
       var mrp = parseFloat(tr.querySelector('[data-f="mrp"]').value) || 0;
@@ -1856,6 +1980,7 @@
       subtotal += lineTotal;
       totalDiscount += discAmt;
       totalMrpVal += mrp * qty;
+      totalQty += qty;
       if (isIntra || !pos) { totalCgst += afterDisc * gst / 200; totalSgst += afterDisc * gst / 200; }
       else { totalIgst += afterDisc * gst / 100; }
       tr.querySelector('[data-f="disc_amt"]').textContent = formatINR(discAmt);
@@ -1901,6 +2026,11 @@
         savedRow.style.display = 'none';
       }
     }
+    // Update footer totals
+    var footerTotal = document.getElementById('footerTotal');
+    if (footerTotal) footerTotal.textContent = formatINR(roundedTotal);
+    var footerQty = document.getElementById('footerQty');
+    if (footerQty) footerQty.textContent = totalQty;
   }
 
   function submitInvoice() {
@@ -4077,7 +4207,8 @@
           party_rate: document.getElementById('isPartyRate') ? document.getElementById('isPartyRate').checked : false,
           custom_fields: document.getElementById('isCustomFields') ? document.getElementById('isCustomFields').checked : false,
           low_stock_threshold: parseInt(document.getElementById('isLowStockThreshold') ? document.getElementById('isLowStockThreshold').value : '10') || 10,
-          categories: (document.getElementById('isCategoryList') ? document.getElementById('isCategoryList').value : 'Electronics, Clothing, Food, Medicine, Other').split(',').map(function(c) { return c.trim(); }).filter(Boolean)
+          categories: (document.getElementById('isCategoryList') ? document.getElementById('isCategoryList').value : 'Electronics, Clothing, Food, Medicine, Other').split(',').map(function(c) { return c.trim(); }).filter(Boolean),
+          visible_columns: (currentUser && currentUser.item_settings && currentUser.item_settings.visible_columns) || {}
         }
       };
       var submitBtn = e.target.querySelector('button[type="submit"]');

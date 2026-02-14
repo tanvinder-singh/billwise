@@ -243,21 +243,17 @@ app.get('/api/auth/me', auth, async (req, res) => {
 
 // Update profile
 app.put('/api/auth/profile', auth, async (req, res) => {
-  const { name, business_name, gstin, address, city, state, pincode, bank_name, account_no,
-          ifsc_code, account_holder, terms_conditions, upi_id, upi_qr, signature,
-          invoice_theme, gstin_api_key, logo, item_settings } = req.body;
-  const setData = {
-    name: name || '', business_name: business_name || '', gstin: gstin || '',
-    address: address || '', city: city || '', state: state || '', pincode: pincode || '',
-    bank_name: bank_name || '', account_no: account_no || '', ifsc_code: ifsc_code || '',
-    account_holder: account_holder || '', terms_conditions: terms_conditions || '',
-    upi_id: upi_id || '', upi_qr: upi_qr || '', signature: signature || '',
-    logo: logo || ''
-  };
-  if (invoice_theme !== undefined) setData.invoice_theme = invoice_theme;
-  if (gstin_api_key !== undefined) setData.gstin_api_key = gstin_api_key;
-  if (item_settings !== undefined) setData.item_settings = item_settings;
-  await users.update({ id: req.user.id }, { $set: setData });
+  const b = req.body;
+  const setData = {};
+  // Only update fields that are explicitly sent in the request body
+  const textFields = ['name', 'business_name', 'gstin', 'address', 'city', 'state', 'pincode',
+    'bank_name', 'account_no', 'ifsc_code', 'account_holder', 'terms_conditions',
+    'upi_id', 'upi_qr', 'signature', 'logo', 'invoice_theme', 'gstin_api_key'];
+  textFields.forEach(f => { if (b[f] !== undefined) setData[f] = b[f] || ''; });
+  if (b.item_settings !== undefined) setData.item_settings = b.item_settings;
+  if (Object.keys(setData).length > 0) {
+    await users.update({ id: req.user.id }, { $set: setData });
+  }
   const user = await users.findOne({ id: req.user.id });
   res.json({ user: safeUser(user), message: 'Profile updated' });
 });
