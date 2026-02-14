@@ -767,7 +767,7 @@ tr:hover td { background:rgba(241,245,249,0.5); }
 
 .sale-items {
   background:var(--surface); border-radius:var(--radius); border:1px solid var(--border);
-  box-shadow:var(--shadow); margin-bottom:16px; overflow:visible;
+  box-shadow:var(--shadow); margin-bottom:16px;
 }
 .sale-items-actions { padding:12px 16px; border-top:1px solid var(--border); }
 
@@ -1226,14 +1226,10 @@ tr:hover td { background:rgba(241,245,249,0.5); }
 
 /* Autocomplete dropdown */
 .ac-wrap { position:relative; }
+/* Old in-DOM dropdowns are no longer used; popups are appended to body instead */
 .ac-dropdown, .ac-list {
-  display:none; position:absolute; top:100%; left:0; z-index:200;
-  background:#fff; border:1.5px solid var(--primary);
-  border-top:none; border-radius:0 0 var(--radius-sm) var(--radius-sm);
-  box-shadow:0 8px 24px rgba(0,0,0,0.18); max-height:260px; overflow-y:auto;
-  min-width:280px;
+  display:none !important;
 }
-.ac-dropdown.open, .ac-list.open { display:block; }
 .ac-item {
   padding:10px 14px; cursor:pointer; font-size:0.85rem;
   border-bottom:1px solid #f0f0f0; transition:background 0.1s;
@@ -1244,6 +1240,17 @@ tr:hover td { background:rgba(241,245,249,0.5); }
 .ac-item .ac-sub { font-size:0.75rem; color:var(--text-muted); margin-top:2px; }
 .ac-item b { color:var(--primary); }
 .ac-empty { padding:12px 14px; font-size:0.8rem; color:var(--text-muted); text-align:center; }
+/* Fixed-position popup (appended to body) */
+.ac-popup .ac-item {
+  padding:10px 14px; cursor:pointer; font-size:0.85rem;
+  border-bottom:1px solid #f0f0f0; transition:background 0.1s;
+}
+.ac-popup .ac-item:last-child { border-bottom:none; }
+.ac-popup .ac-item:hover { background:rgba(13,148,136,0.08); }
+.ac-popup .ac-item .ac-main { font-weight:600; color:var(--text); font-size:0.85rem; }
+.ac-popup .ac-item .ac-sub { font-size:0.75rem; color:var(--text-muted); margin-top:2px; }
+.ac-popup .ac-item b { color:var(--primary); }
+.ac-popup .ac-empty { padding:12px 14px; font-size:0.8rem; color:var(--text-muted); text-align:center; }
 /* inside table cells */
 .items-table td .ac-wrap { width:100%; position:relative; }
 .items-table td .ac-dropdown, .items-table td .ac-list { min-width:260px; }

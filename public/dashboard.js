@@ -231,50 +231,72 @@
 
   // ─── Autocomplete ────────────────────────────────────────────
   var _acTimers = {};
+  var _acIdCounter = 0;
   function acSearch(input, dropdown, endpoint, renderFn, selectFn) {
     input.setAttribute('autocomplete', 'off');
     var _data = [];
+    // Use a fixed-position popup appended to body so it escapes all overflow containers
+    var popup = document.createElement('div');
+    popup.className = 'ac-popup';
+    popup.style.cssText = 'display:none;position:fixed;z-index:9999;background:#fff;border:1.5px solid var(--primary);border-radius:0 0 8px 8px;box-shadow:0 8px 24px rgba(0,0,0,0.2);max-height:260px;overflow-y:auto;min-width:280px;';
+    document.body.appendChild(popup);
 
+    function positionPopup() {
+      var rect = input.getBoundingClientRect();
+      popup.style.top = rect.bottom + 'px';
+      popup.style.left = rect.left + 'px';
+      popup.style.width = Math.max(rect.width, 280) + 'px';
+    }
+
+    function showPopup() { positionPopup(); popup.style.display = 'block'; }
+    function hidePopup() { popup.style.display = 'none'; }
+
+    var _acKey = endpoint + '_' + (input.id || input.getAttribute('data-f') || ('ac' + (++_acIdCounter)));
     function doSearch(q) {
-      var key = endpoint + (input.id || Math.random());
-      clearTimeout(_acTimers[key]);
-      _acTimers[key] = setTimeout(function () {
+      clearTimeout(_acTimers[_acKey]);
+      _acTimers[_acKey] = setTimeout(function () {
         api('GET', endpoint + '?q=' + encodeURIComponent(q)).then(function (res) {
           _data = res.parties || res.products || res.invoices || res.documents || res.payments || [];
           if (!_data.length) {
-            dropdown.innerHTML = '<div class="ac-empty">No results found</div>';
-            dropdown.classList.add('open');
+            popup.innerHTML = '<div class="ac-empty">No results found</div>';
+            showPopup();
             return;
           }
-          dropdown.innerHTML = _data.map(function (d, i) {
+          popup.innerHTML = _data.map(function (d, i) {
             return '<div class="ac-item" data-idx="' + i + '">' + renderFn(d, q) + '</div>';
           }).join('');
-          dropdown.classList.add('open');
+          showPopup();
         });
       }, q ? 200 : 50);
     }
 
     input.addEventListener('input', function () {
-      var q = input.value.trim();
-      doSearch(q);
+      doSearch(input.value.trim());
     });
 
-    dropdown.addEventListener('mousedown', function (e) {
+    popup.addEventListener('mousedown', function (e) {
       e.preventDefault();
       var el = e.target.closest('.ac-item');
       if (!el) return;
       var idx = parseInt(el.getAttribute('data-idx'));
-      if (_data[idx]) { selectFn(_data[idx]); dropdown.classList.remove('open'); }
+      if (_data[idx]) { selectFn(_data[idx]); hidePopup(); }
     });
 
     input.addEventListener('blur', function () {
-      setTimeout(function () { dropdown.classList.remove('open'); }, 200);
+      setTimeout(hidePopup, 200);
     });
 
-    // On focus, load all items immediately
     input.addEventListener('focus', function () {
       doSearch(input.value.trim());
     });
+
+    // Reposition on scroll
+    var scrollParent = input.closest('.table-wrap') || input.closest('.content') || window;
+    if (scrollParent && scrollParent !== window) {
+      scrollParent.addEventListener('scroll', function () {
+        if (popup.style.display !== 'none') positionPopup();
+      });
+    }
   }
 
   function acHL(text, query) {
