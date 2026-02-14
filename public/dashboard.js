@@ -4072,23 +4072,56 @@
     var html = '<div class="form-card"><h3>Generate Report</h3><div class="form-grid">' +
       fg('From Date', '<input id="rptFrom" type="date" value="' + firstOfMonth + '">') +
       fg('To Date', '<input id="rptTo" type="date" value="' + today + '">') +
+      fg('Customer', '<div class="ac-wrap"><input id="rptCustomer" placeholder="All Customers" autocomplete="off"><div class="ac-dropdown" id="rptCustomerAc"></div></div>') +
+      fg('Status', '<select id="rptStatus"><option value="">All</option><option value="paid">Paid</option><option value="unpaid">Unpaid</option><option value="partial">Partial</option></select>') +
     '</div>' +
-    '<div class="form-actions" style="margin-top:16px">' +
+    '<div class="form-actions" style="margin-top:16px;flex-wrap:wrap;gap:8px">' +
       '<button type="button" class="btn btn-primary" id="generateRptBtn">Generate Report</button>' +
       '<button type="button" class="btn btn-outline" id="dlSalesCSV">\u2913 Sales CSV</button>' +
+      '<button type="button" class="btn btn-outline" id="dlItemsCSV">\u2913 Items CSV</button>' +
       '<button type="button" class="btn btn-outline" id="dlGstCSV">\u2913 GST CSV</button>' +
+      '<button type="button" class="btn btn-outline" id="clearRptFilter" style="margin-left:auto;color:var(--text-muted)">Clear Filters</button>' +
     '</div></div><div id="reportContent"><div class="empty-state">Click "Generate Report" to view reports.</div></div>';
 
     $content.innerHTML = html;
     var reportData = null;
 
+    // Customer autocomplete for filter
+    acSearch(document.getElementById('rptCustomer'), document.getElementById('rptCustomerAc'), '/api/parties',
+      function (p, q) {
+        return '<div class="ac-main">' + acHL(p.name, q) + '</div>' +
+          (p.phone ? '<div class="ac-sub">Ph: ' + p.phone + '</div>' : '');
+      },
+      function (p) { document.getElementById('rptCustomer').value = p.name; });
+
+    // Clear filters
+    document.getElementById('clearRptFilter').addEventListener('click', function () {
+      document.getElementById('rptCustomer').value = '';
+      document.getElementById('rptStatus').value = '';
+      document.getElementById('rptFrom').value = firstOfMonth;
+      document.getElementById('rptTo').value = today;
+      document.getElementById('generateRptBtn').click();
+    });
+
+    function _rptFileSuffix() {
+      var cust = document.getElementById('rptCustomer').value.trim();
+      var suffix = document.getElementById('rptFrom').value + '_to_' + document.getElementById('rptTo').value;
+      if (cust) suffix += '_' + cust.replace(/[^a-zA-Z0-9]/g, '_');
+      return suffix;
+    }
+
     document.getElementById('generateRptBtn').addEventListener('click', function () {
       var from = document.getElementById('rptFrom').value;
       var to = document.getElementById('rptTo').value;
+      var customer = document.getElementById('rptCustomer').value.trim();
+      var status = document.getElementById('rptStatus').value;
       document.getElementById('reportContent').innerHTML = '<p style="color:var(--text-muted)">Loading report...</p>';
-      api('GET', '/api/reports?from=' + encodeURIComponent(from) + '&to=' + encodeURIComponent(to)).then(function (data) {
+      var url = '/api/reports?from=' + encodeURIComponent(from) + '&to=' + encodeURIComponent(to);
+      if (customer) url += '&customer=' + encodeURIComponent(customer);
+      if (status) url += '&status=' + encodeURIComponent(status);
+      api('GET', url).then(function (data) {
         reportData = data;
-        renderReportContent(data);
+        renderReportContent(data, customer);
       }).catch(function () {
         document.getElementById('reportContent').innerHTML = '<div class="empty-state">Failed to load report.</div>';
       });
@@ -4096,14 +4129,37 @@
 
     document.getElementById('dlSalesCSV').addEventListener('click', function () {
       if (!reportData || !reportData.invoices) { showToast('Generate report first', 'error'); return; }
-      var csvRows = [['Invoice #', 'Date', 'Customer', 'Customer GSTIN', 'Taxable Amount', 'CGST', 'SGST', 'IGST', 'Total', 'Status']];
+      var csvRows = [['Invoice #', 'Date', 'Customer', 'Phone', 'Email', 'GSTIN', 'State', 'Taxable Amount', 'Discount', 'CGST', 'SGST', 'IGST', 'Round Off', 'Total', 'Status']];
       reportData.invoices.forEach(function (inv) {
-        csvRows.push([inv.invoice_number, inv.invoice_date, inv.customer_name, inv.customer_gstin || '',
-          (inv.subtotal || 0).toFixed(2), (inv.cgst || 0).toFixed(2), (inv.sgst || 0).toFixed(2),
-          (inv.igst || 0).toFixed(2), (inv.total || 0).toFixed(2), inv.status]);
+        csvRows.push([inv.invoice_number, inv.invoice_date, inv.customer_name,
+          inv.customer_phone || '', inv.customer_email || '', inv.customer_gstin || '', inv.customer_state || '',
+          (inv.subtotal || 0).toFixed(2), (inv.discount || 0).toFixed(2),
+          (inv.cgst || 0).toFixed(2), (inv.sgst || 0).toFixed(2),
+          (inv.igst || 0).toFixed(2), (inv.round_off || 0).toFixed(2),
+          (inv.total || 0).toFixed(2), inv.status]);
       });
-      downloadCSV(csvRows, 'sales_report_' + document.getElementById('rptFrom').value + '_to_' + document.getElementById('rptTo').value + '.csv');
+      downloadCSV(csvRows, 'sales_report_' + _rptFileSuffix() + '.csv');
       showToast('Sales CSV downloaded!', 'success');
+    });
+
+    // Item-wise CSV download
+    document.getElementById('dlItemsCSV').addEventListener('click', function () {
+      if (!reportData || !reportData.invoices) { showToast('Generate report first', 'error'); return; }
+      var csvRows = [['Invoice #', 'Date', 'Customer', 'Item Name', 'HSN/SAC', 'Qty', 'Unit', 'Rate', 'Disc%', 'GST%', 'Amount']];
+      reportData.invoices.forEach(function (inv) {
+        (inv.items || []).forEach(function (item) {
+          var lineTotal = (item.qty || 0) * (item.rate || 0);
+          var discAmt = lineTotal * (item.disc_pct || 0) / 100;
+          var afterDisc = lineTotal - discAmt;
+          var gstAmt = afterDisc * (item.gst || 0) / 100;
+          csvRows.push([inv.invoice_number, inv.invoice_date, inv.customer_name,
+            item.name, item.hsn || '', item.qty, item.unit || '',
+            (item.rate || 0).toFixed(2), (item.disc_pct || 0),
+            (item.gst || 0), (afterDisc + gstAmt).toFixed(2)]);
+        });
+      });
+      downloadCSV(csvRows, 'items_report_' + _rptFileSuffix() + '.csv');
+      showToast('Items CSV downloaded!', 'success');
     });
 
     document.getElementById('dlGstCSV').addEventListener('click', function () {
@@ -4114,7 +4170,7 @@
           h.cgst_rate || '', h.cgst.toFixed(2), h.sgst_rate || '', h.sgst.toFixed(2),
           h.igst_rate || '', h.igst.toFixed(2), h.total_tax.toFixed(2)]);
       });
-      downloadCSV(csvRows, 'gst_report_' + document.getElementById('rptFrom').value + '_to_' + document.getElementById('rptTo').value + '.csv');
+      downloadCSV(csvRows, 'gst_report_' + _rptFileSuffix() + '.csv');
       showToast('GST CSV downloaded!', 'success');
     });
 
@@ -4122,11 +4178,12 @@
     document.getElementById('generateRptBtn').click();
   }
 
-  function renderReportContent(data) {
+  function renderReportContent(data, customerFilter) {
     var s = data.summary || {};
     var invList = data.invoices || [];
     var hsnData = data.hsn_summary || [];
 
+    var filterLabel = customerFilter ? ' &mdash; ' + esc(customerFilter) : '';
     var html = '<div class="stats-grid">' +
       statCard('Invoices', s.total_invoices || 0, '') +
       statCard('Total Sales', formatINR(s.total_amount || 0), 'primary') +
@@ -4136,7 +4193,7 @@
     '</div>';
 
     // Sales table
-    html += '<div class="table-card" style="margin-bottom:20px"><div class="table-header"><h3>Sales Report (' + invList.length + ' invoices)</h3></div>';
+    html += '<div class="table-card" style="margin-bottom:20px"><div class="table-header"><h3>Sales Report (' + invList.length + ' invoices)' + filterLabel + '</h3></div>';
     if (invList.length) {
       var rows = invList.map(function (inv) {
         var invId = inv.id || inv._id;

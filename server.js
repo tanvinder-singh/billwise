@@ -1272,7 +1272,7 @@ app.delete('/api/expenses/:id', auth, async (req, res) => {
 // ─── REPORTS ────────────────────────────────────────────────
 app.get('/api/reports', auth, async (req, res) => {
   try {
-    const { from, to } = req.query;
+    const { from, to, customer, status } = req.query;
     let allInvoices = await invoices.find({ user_id: req.user.id }).sort({ invoice_date: -1 });
     if (from || to) {
       allInvoices = allInvoices.filter(inv => {
@@ -1280,6 +1280,13 @@ app.get('/api/reports', auth, async (req, res) => {
         if (to && inv.invoice_date > to) return false;
         return true;
       });
+    }
+    if (customer) {
+      const cLower = customer.toLowerCase();
+      allInvoices = allInvoices.filter(inv => (inv.customer_name || '').toLowerCase().includes(cLower));
+    }
+    if (status) {
+      allInvoices = allInvoices.filter(inv => inv.status === status);
     }
     const hsnMap = {};
     allInvoices.forEach(inv => {
