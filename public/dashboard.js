@@ -228,32 +228,61 @@
 
   // ── Download as PDF using jsPDF + autoTable ──
   function downloadPDF(rows, filename, title) {
-    if (typeof jspdf === 'undefined' && typeof window.jspdf === 'undefined') { showToast('PDF library not loaded', 'error'); return; }
-    var jsPDF = (window.jspdf && window.jspdf.jsPDF) || jspdf.jsPDF;
-    var headers = rows[0];
-    var body = rows.slice(1);
-    var doc = new jsPDF({ orientation: headers.length > 8 ? 'landscape' : 'portrait', unit: 'mm', format: 'a4' });
-    // Title
-    var bizName = (currentUser && (currentUser.business_name || currentUser.name)) || 'Report';
-    doc.setFontSize(14);
-    doc.text(bizName, 14, 15);
-    doc.setFontSize(10);
-    doc.setTextColor(100);
-    doc.text(title || filename.replace('.pdf', ''), 14, 22);
-    doc.text('Generated: ' + new Date().toLocaleDateString('en-IN'), 14, 27);
-    doc.setTextColor(0);
-    // Table
-    doc.autoTable({
-      head: [headers],
-      body: body,
-      startY: 32,
-      theme: 'grid',
-      styles: { fontSize: 7.5, cellPadding: 2 },
-      headStyles: { fillColor: [13, 110, 253], textColor: 255, fontStyle: 'bold', fontSize: 7.5 },
-      alternateRowStyles: { fillColor: [245, 247, 250] },
-      margin: { left: 10, right: 10 }
-    });
-    doc.save(filename);
+    try {
+      // Resolve jsPDF constructor
+      var _jsPDF = null;
+      if (window.jspdf && window.jspdf.jsPDF) _jsPDF = window.jspdf.jsPDF;
+      else if (typeof jsPDF !== 'undefined') _jsPDF = jsPDF;
+      if (!_jsPDF) { showToast('PDF library not loaded. Please hard-refresh.', 'error'); return; }
+
+      // Ensure autotable plugin is applied (v5 requires explicit apply)
+      if (window.jspdf_autotable && window.jspdf_autotable.applyPlugin) {
+        window.jspdf_autotable.applyPlugin(_jsPDF);
+      }
+
+      var headers = rows[0];
+      var body = rows.slice(1);
+      var doc = new _jsPDF({ orientation: headers.length > 8 ? 'landscape' : 'portrait', unit: 'mm', format: 'a4' });
+
+      // Title
+      var bizName = (currentUser && (currentUser.business_name || currentUser.name)) || 'Report';
+      doc.setFontSize(14);
+      doc.text(bizName, 14, 15);
+      doc.setFontSize(10);
+      doc.setTextColor(100);
+      doc.text(title || filename.replace('.pdf', ''), 14, 22);
+      doc.text('Generated: ' + new Date().toLocaleDateString('en-IN'), 14, 27);
+      doc.setTextColor(0);
+
+      // Table — try both v5 direct call and legacy plugin method
+      var tableOpts = {
+        head: [headers],
+        body: body,
+        startY: 32,
+        theme: 'grid',
+        styles: { fontSize: 7.5, cellPadding: 2 },
+        headStyles: { fillColor: [13, 110, 253], textColor: 255, fontStyle: 'bold', fontSize: 7.5 },
+        alternateRowStyles: { fillColor: [245, 247, 250] },
+        margin: { left: 10, right: 10 }
+      };
+
+      if (typeof doc.autoTable === 'function') {
+        // Legacy plugin style (auto-registered)
+        doc.autoTable(tableOpts);
+      } else if (window.jspdf_autotable && typeof window.jspdf_autotable.autoTable === 'function') {
+        // v5 direct function style
+        window.jspdf_autotable.autoTable(doc, tableOpts);
+      } else if (typeof autoTable === 'function') {
+        autoTable(doc, tableOpts);
+      } else {
+        showToast('AutoTable plugin not loaded', 'error'); return;
+      }
+
+      doc.save(filename);
+    } catch (e) {
+      console.error('PDF generation error:', e);
+      showToast('PDF generation failed: ' + e.message, 'error');
+    }
   }
   function esc(s) { return (s || '').replace(/"/g, '&quot;').replace(/</g, '&lt;'); }
   function fg(label, input) { return '<div class="form-group"><label>' + label + '</label>' + input + '</div>'; }
