@@ -325,6 +325,7 @@ tr:hover td { background:rgba(241,245,249,0.5); }
   transition:all 0.15s; color:var(--text-muted);
 }
 .card-actions button:hover { border-color:var(--primary); color:var(--primary); }
+.card-actions button.stmt-btn:hover { border-color:#7c3aed; color:#7c3aed; background:#ede9fe; }
 .card-actions button.edit-btn:hover { border-color:var(--primary); color:var(--primary); background:#ccfbf1; }
 .card-actions button.del:hover { border-color:#dc2626; color:#dc2626; background:#fee2e2; }
 
@@ -1461,3 +1462,26 @@ tr:hover td { background:rgba(241,245,249,0.5); }
 .dl-menu button:hover { background:var(--bg); }
 .dl-menu button svg { flex-shrink:0; }
 .dl-divider { border-top:1px solid var(--border); margin:0; }
+
+/* ── Party Statement ── */
+.ps-biz-header { margin-bottom:8px; border-bottom:2px solid var(--text); padding-bottom:8px; }
+.ps-biz-name { font-size:1.25rem; font-weight:800; margin:0 0 2px; color:var(--text); }
+.ps-biz-detail { font-size:0.8125rem; color:var(--text-muted); line-height:1.5; }
+.ps-title { font-size:1rem; font-weight:700; margin:12px 0 8px; }
+.ps-party-info { font-size:0.875rem; line-height:1.6; margin-bottom:4px; }
+.ps-table { width:100%; border-collapse:collapse; font-size:0.8125rem; }
+.ps-table th { background:var(--bg); font-weight:700; padding:8px 10px; border:1px solid var(--border); font-size:0.75rem; text-transform:uppercase; letter-spacing:0.3px; white-space:nowrap; }
+.ps-table td { padding:7px 10px; border:1px solid var(--border); }
+.ps-table tbody tr:hover { background:rgba(13,110,253,0.03); }
+.ps-totals { display:flex; justify-content:flex-end; gap:24px; margin-top:16px; padding:12px 16px; background:var(--bg); border-radius:var(--radius-sm); flex-wrap:wrap; }
+.ps-total-item { display:flex; align-items:center; gap:8px; font-size:0.875rem; }
+.ps-total-item strong { font-size:1rem; }
+.ps-net { border-left:2px solid var(--border); padding-left:24px; }
+
+@media print {
+  .sidebar, .topbar, .form-card, .dl-wrap, .toast { display:none !important; }
+  .main { margin-left:0 !important; }
+  .content { padding:0 !important; }
+  .ps-print-area { display:block !important; }
+  .ps-table th, .ps-table td { font-size:8pt !important; padding:4px 6px !important; }
+}

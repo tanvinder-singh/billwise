@@ -1269,6 +1269,130 @@ app.delete('/api/expenses/:id', auth, async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: 'Failed to delete expense' }); }
 });
 
+// ─── PARTY STATEMENT ─────────────────────────────────────────
+app.get('/api/party-statement', auth, async (req, res) => {
+  try {
+    const partyName = (req.query.party || '').trim();
+    const from = req.query.from || '';
+    const to = req.query.to || '';
+    if (!partyName) return res.status(400).json({ error: 'Party name is required' });
+
+    // Fetch party details
+    const partyList = await parties.find({ user_id: req.user.id });
+    const party = partyList.find(p => (p.name || '').toLowerCase() === partyName.toLowerCase()) || { name: partyName };
+
+    // Fetch all sale invoices for this party
+    let allInv = await invoices.find({ user_id: req.user.id });
+    allInv = allInv.filter(inv => (inv.customer_name || '').toLowerCase() === partyName.toLowerCase());
+
+    // Fetch all payments-in for this party
+    let allPayIn = await paymentsIn.find({ user_id: req.user.id });
+    allPayIn = allPayIn.filter(p => (p.party_name || '').toLowerCase() === partyName.toLowerCase());
+
+    // Fetch all purchase docs for this party
+    let allPurchase = await purchaseDocuments.find({ user_id: req.user.id });
+    allPurchase = allPurchase.filter(d => (d.supplier_name || '').toLowerCase() === partyName.toLowerCase());
+
+    // Fetch all payments-out for this party
+    let allPayOut = await paymentsOut.find({ user_id: req.user.id });
+    allPayOut = allPayOut.filter(p => (p.party_name || '').toLowerCase() === partyName.toLowerCase());
+
+    // Build unified transaction list
+    var txns = [];
+    allInv.forEach(inv => {
+      txns.push({
+        date: inv.invoice_date || inv.created_at,
+        type: 'Sale',
+        ref_no: inv.invoice_number,
+        status: inv.status || 'unpaid',
+        total: inv.total || 0,
+        received: inv.amount_paid || 0,
+        txn_balance: (inv.total || 0) - (inv.amount_paid || 0),
+        direction: 'receivable' // they owe us
+      });
+    });
+    allPayIn.forEach(p => {
+      txns.push({
+        date: p.payment_date || p.created_at,
+        type: 'Payment-In',
+        ref_no: p.payment_number || p.reference_number || '',
+        status: 'paid',
+        total: p.amount || 0,
+        received: p.amount || 0,
+        txn_balance: p.amount || 0,
+        direction: 'payment_in' // reduces receivable
+      });
+    });
+    allPurchase.forEach(d => {
+      txns.push({
+        date: d.doc_date || d.created_at,
+        type: d.doc_type === 'purchase_order' ? 'Purchase Order' : d.doc_type === 'purchase_return' ? 'Purchase Return' : 'Purchase',
+        ref_no: d.doc_number || '',
+        status: d.status || 'unpaid',
+        total: d.total || 0,
+        received: d.amount_paid || 0,
+        txn_balance: (d.total || 0) - (d.amount_paid || 0),
+        direction: 'payable' // we owe them
+      });
+    });
+    allPayOut.forEach(p => {
+      txns.push({
+        date: p.payment_date || p.created_at,
+        type: 'Payment-Out',
+        ref_no: p.payment_number || p.reference_number || '',
+        status: 'paid',
+        total: p.amount || 0,
+        received: p.amount || 0,
+        txn_balance: p.amount || 0,
+        direction: 'payment_out' // reduces payable
+      });
+    });
+
+    // Date filter
+    if (from || to) {
+      txns = txns.filter(t => {
+        var d = (t.date || '').slice(0, 10);
+        if (from && d < from) return false;
+        if (to && d > to) return false;
+        return true;
+      });
+    }
+
+    // Sort by date ascending
+    txns.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+
+    // Calculate running balances
+    var receivableBalance = 0;
+    var payableBalance = 0;
+    txns.forEach(t => {
+      if (t.direction === 'receivable') {
+        receivableBalance += t.txn_balance;
+      } else if (t.direction === 'payment_in') {
+        receivableBalance -= t.txn_balance;
+      } else if (t.direction === 'payable') {
+        payableBalance += t.txn_balance;
+      } else if (t.direction === 'payment_out') {
+        payableBalance -= t.txn_balance;
+      }
+      t.receivable_balance = receivableBalance;
+      t.payable_balance = payableBalance;
+    });
+
+    res.json({
+      party: party,
+      transactions: txns,
+      summary: {
+        total_receivable: receivableBalance,
+        total_payable: payableBalance,
+        net_balance: receivableBalance - payableBalance
+      }
+    });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Failed to generate party statement' });
+  }
+});
+
 // ─── REPORTS ────────────────────────────────────────────────
 app.get('/api/reports', auth, async (req, res) => {
   try {

@@ -58,6 +58,7 @@
         case 'items':       renderItems(); break;
         case 'add-party':   renderAddParty(); break;
         case 'edit-party':  renderEditParty(param); break;
+        case 'party-statement': renderPartyStatement(param); break;
         case 'add-item':    renderAddItem(); break;
         case 'edit-item':   renderEditItem(param); break;
         case 'new-invoice': renderNewInvoice(); break;
@@ -515,7 +516,7 @@
         '<div class="report-links">' +
           '<div class="report-link" onclick="window.goTo(\'reports\')"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M18 20V10M12 20V4M6 20v-6"/></svg> Sale Report</div>' +
           '<div class="report-link" onclick="window.goTo(\'invoices\')"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg> All Transactions</div>' +
-          '<div class="report-link" onclick="window.goTo(\'parties\')"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg> Party Statement</div>' +
+          '<div class="report-link" onclick="window.goTo(\'party-statement\')"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg> Party Statement</div>' +
         '</div></div>';
 
       // Recent invoices
@@ -687,6 +688,7 @@
         var pid = p.id || p._id;
         html += '<div class="party-card" data-name="' + esc(p.name).toLowerCase() + '" data-id="' + pid + '" style="cursor:pointer">' +
           '<div class="card-actions">' +
+            '<button type="button" class="stmt-btn" title="View Statement" data-pname="' + esc(p.name) + '"><svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></button>' +
             '<button type="button" class="edit-btn" title="Edit" data-id="' + pid + '"><svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>' +
             '<button type="button" class="del" title="Delete" data-id="' + pid + '"><svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg></button>' +
           '</div>' +
@@ -706,6 +708,14 @@
         var q = this.value.trim().toLowerCase();
         document.querySelectorAll('.party-card').forEach(function (card) {
           card.style.display = !q || card.getAttribute('data-name').indexOf(q) !== -1 ? '' : 'none';
+        });
+      });
+
+      // Statement buttons
+      $content.querySelectorAll('.card-actions .stmt-btn').forEach(function (btn) {
+        btn.addEventListener('click', function (e) {
+          e.stopPropagation();
+          window.goTo('party-statement', btn.getAttribute('data-pname'));
         });
       });
 
@@ -1226,6 +1236,300 @@
         }).catch(function () { showToast('Failed to update party', 'error'); btn.disabled = false; btn.textContent = 'Update Party'; });
       });
     }).catch(function () { showToast('Failed to load party', 'error'); window.goTo('parties'); });
+  }
+
+  // ── Party Statement Page ───────────────────────────────────
+  function renderPartyStatement(partyName) {
+    $pageTitle.textContent = 'Party Statement';
+    if (!partyName) {
+      $content.innerHTML = '<div class="form-card"><h3>Party Statement</h3>' +
+        '<div class="form-grid">' +
+        '<div class="form-group"><label>Party Name *</label><div class="ac-wrap"><input id="psParty" placeholder="Search party..." autocomplete="off"><div class="ac-dropdown" id="psPartyAc"></div></div></div>' +
+        '<div class="form-group"><label>From Date</label><input id="psFrom" type="date"></div>' +
+        '<div class="form-group"><label>To Date</label><input id="psTo" type="date"></div>' +
+        '</div>' +
+        '<div style="margin-top:16px"><button type="button" class="btn btn-primary" id="psGenBtn">View Statement</button></div></div>' +
+        '<div id="psContent"></div>';
+      $content.innerHTML = $content.innerHTML; // force re-render
+      acSearch(document.getElementById('psParty'), document.getElementById('psPartyAc'), '/api/parties',
+        function(p, q) { return '<div class="ac-main">' + acHL(p.name, q) + '</div>' + (p.phone ? '<div class="ac-sub">Ph: ' + p.phone + '</div>' : ''); },
+        function(p) { document.getElementById('psParty').value = p.name; });
+      document.getElementById('psGenBtn').addEventListener('click', function() {
+        var pn = document.getElementById('psParty').value.trim();
+        if (!pn) return showToast('Select a party', 'error');
+        window.goTo('party-statement', pn);
+      });
+      return;
+    }
+
+    // Decode party name
+    partyName = decodeURIComponent(partyName);
+    var today = new Date().toISOString().slice(0, 10);
+    var firstOfYear = today.slice(0, 4) + '-01-01';
+
+    var html = '<div class="form-card" style="margin-bottom:16px"><div class="form-grid" style="align-items:flex-end">' +
+      '<div class="form-group"><label>Party</label><div class="ac-wrap"><input id="psParty" value="' + esc(partyName) + '" autocomplete="off"><div class="ac-dropdown" id="psPartyAc"></div></div></div>' +
+      '<div class="form-group"><label>From</label><input id="psFrom" type="date" value="' + firstOfYear + '"></div>' +
+      '<div class="form-group"><label>To</label><input id="psTo" type="date" value="' + today + '"></div>' +
+      '<div class="form-group"><button type="button" class="btn btn-primary" id="psGenBtn">View Statement</button></div>' +
+      '</div>' +
+      '<div class="form-actions" style="margin-top:12px;flex-wrap:wrap;gap:8px">' +
+        '<div class="dl-wrap" id="psDlWrap">' +
+          '<button type="button" class="dl-btn" id="psDlBtn">' +
+            '<svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>' +
+            'Download Statement <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg></button>' +
+          '<div class="dl-menu" id="psDlMenu">' +
+            '<button type="button" data-fmt="pdf"><svg width="15" height="15" fill="none" stroke="#dc2626" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg> Download PDF</button>' +
+            '<button type="button" data-fmt="excel"><svg width="15" height="15" fill="none" stroke="#0d6efd" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg> Download Excel</button>' +
+            '<button type="button" data-fmt="csv"><svg width="15" height="15" fill="none" stroke="#16a34a" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg> Download CSV</button>' +
+          '</div></div>' +
+        '<button type="button" class="btn btn-outline" onclick="window.print()">Print</button>' +
+      '</div></div>' +
+      '<div id="psContent"><p style="color:var(--text-muted)">Loading statement...</p></div>';
+    $content.innerHTML = html;
+
+    // Autocomplete on party field
+    acSearch(document.getElementById('psParty'), document.getElementById('psPartyAc'), '/api/parties',
+      function(p, q) { return '<div class="ac-main">' + acHL(p.name, q) + '</div>' + (p.phone ? '<div class="ac-sub">Ph: ' + p.phone + '</div>' : ''); },
+      function(p) { document.getElementById('psParty').value = p.name; });
+
+    var _psData = null;
+
+    function loadStatement() {
+      var pName = document.getElementById('psParty').value.trim();
+      var from = document.getElementById('psFrom').value;
+      var to = document.getElementById('psTo').value;
+      if (!pName) return showToast('Enter a party name', 'error');
+      document.getElementById('psContent').innerHTML = '<p style="color:var(--text-muted)">Loading statement...</p>';
+      var url = '/api/party-statement?party=' + encodeURIComponent(pName);
+      if (from) url += '&from=' + from;
+      if (to) url += '&to=' + to;
+      api('GET', url).then(function(data) {
+        _psData = data;
+        _psData._from = from;
+        _psData._to = to;
+        renderStatementContent(data);
+      }).catch(function() {
+        document.getElementById('psContent').innerHTML = '<div class="empty-state">Failed to load statement.</div>';
+      });
+    }
+
+    function renderStatementContent(data) {
+      var u = currentUser || {};
+      var p = data.party || {};
+      var txns = data.transactions || [];
+      var summary = data.summary || {};
+
+      // Business header (print-friendly)
+      var sHtml = '<div class="ps-print-area" id="psPrintArea">';
+      sHtml += '<div class="ps-biz-header">';
+      sHtml += '<h2 class="ps-biz-name">' + esc(u.business_name || u.name || '') + '</h2>';
+      if (u.address || u.city) sHtml += '<div class="ps-biz-detail">' + esc([u.address, u.city, u.state, u.pincode].filter(Boolean).join(', ')) + '</div>';
+      if (u.phone) sHtml += '<div class="ps-biz-detail">Phone: ' + esc(u.phone) + (u.email ? '&nbsp;&nbsp;Email: ' + esc(u.email) : '') + '</div>';
+      if (u.gstin) sHtml += '<div class="ps-biz-detail">GSTIN: ' + esc(u.gstin) + (u.state ? ', State: ' + esc(u.state) : '') + '</div>';
+      sHtml += '</div>';
+
+      // Title + party info
+      sHtml += '<h3 class="ps-title">Party Statement</h3>';
+      sHtml += '<div class="ps-party-info">';
+      sHtml += '<div><strong>Party name:</strong> ' + esc(p.name || '') + '</div>';
+      if (p.address) sHtml += '<div>' + esc(p.address) + '</div>';
+      if (p.city || p.state) sHtml += '<div>' + esc([p.city, p.state].filter(Boolean).join(', ')) + (p.pincode ? '-' + p.pincode : '') + '</div>';
+      if (p.gstin) sHtml += '<div>GSTIN: ' + esc(p.gstin) + '</div>';
+      if (data._from || data._to) sHtml += '<div style="margin-top:4px;color:var(--text-muted);font-size:0.8125rem">Period: ' + (data._from || 'Start') + ' to ' + (data._to || 'Today') + '</div>';
+      sHtml += '</div>';
+
+      // Table
+      sHtml += '<div class="table-wrap" style="margin-top:16px"><table class="ps-table"><thead><tr>' +
+        '<th>Date</th><th>Txn Type</th><th>Ref No.</th><th>Payment Status</th>' +
+        '<th class="text-right">Total</th><th class="text-right">Received / Paid</th>' +
+        '<th class="text-right">Txn Balance</th><th class="text-right">Receivable Balance</th><th class="text-right">Payable Balance</th>' +
+        '</tr></thead><tbody>';
+
+      if (!txns.length) {
+        sHtml += '<tr><td colspan="9" class="text-center" style="color:var(--text-muted)">No transactions found</td></tr>';
+      }
+      txns.forEach(function(t) {
+        var statusClass = t.status === 'paid' ? 'badge-paid' : t.status === 'partial' ? 'badge-partial' : 'badge-unpaid';
+        sHtml += '<tr>' +
+          '<td>' + formatDateSlash(t.date) + '</td>' +
+          '<td>' + esc(t.type) + '</td>' +
+          '<td>' + esc(t.ref_no || '-') + '</td>' +
+          '<td><span class="badge ' + statusClass + '">' + (t.status || 'unpaid').charAt(0).toUpperCase() + (t.status || 'unpaid').slice(1) + '</span></td>' +
+          '<td class="text-right">' + formatINR(t.total) + '</td>' +
+          '<td class="text-right">' + formatINR(t.received) + '</td>' +
+          '<td class="text-right">' + formatINR(t.txn_balance) + '</td>' +
+          '<td class="text-right" style="font-weight:600;color:var(--primary)">' + formatINR(t.receivable_balance) + '</td>' +
+          '<td class="text-right" style="font-weight:600;color:#dc2626">' + formatINR(t.payable_balance) + '</td>' +
+          '</tr>';
+      });
+      sHtml += '</tbody></table></div>';
+
+      // Totals row
+      sHtml += '<div class="ps-totals">';
+      if (summary.total_receivable) sHtml += '<div class="ps-total-item"><span>Total Receivable:</span><strong style="color:var(--primary)">' + formatINR(summary.total_receivable) + '</strong></div>';
+      if (summary.total_payable) sHtml += '<div class="ps-total-item"><span>Total Payable:</span><strong style="color:#dc2626">' + formatINR(summary.total_payable) + '</strong></div>';
+      var net = summary.net_balance || 0;
+      sHtml += '<div class="ps-total-item ps-net"><span>Net Balance:</span><strong style="color:' + (net >= 0 ? 'var(--primary)' : '#dc2626') + '">' + formatINR(Math.abs(net)) + (net >= 0 ? ' Receivable' : ' Payable') + '</strong></div>';
+      sHtml += '</div></div>';
+
+      document.getElementById('psContent').innerHTML = sHtml;
+    }
+
+    // Generate button
+    document.getElementById('psGenBtn').addEventListener('click', loadStatement);
+
+    // Download dropdown
+    (function() {
+      var dlBtn = document.getElementById('psDlBtn');
+      var dlMenu = document.getElementById('psDlMenu');
+      dlBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        document.querySelectorAll('.dl-menu.open').forEach(function(m) { if (m !== dlMenu) m.classList.remove('open'); });
+        dlMenu.classList.toggle('open');
+      });
+      document.addEventListener('click', function() { dlMenu.classList.remove('open'); });
+
+      dlMenu.addEventListener('click', function(e) {
+        var btn = e.target.closest('button[data-fmt]');
+        if (!btn) return;
+        if (!_psData || !_psData.transactions) { showToast('Load statement first', 'error'); return; }
+        var fmt = btn.dataset.fmt;
+        var p = _psData.party || {};
+        var txns = _psData.transactions || [];
+        var rows = [['Date', 'Txn Type', 'Ref No.', 'Payment Status', 'Total', 'Received / Paid', 'Txn Balance', 'Receivable Balance', 'Payable Balance']];
+        txns.forEach(function(t) {
+          rows.push([
+            formatDateSlash(t.date), t.type, t.ref_no || '-',
+            (t.status || 'unpaid').charAt(0).toUpperCase() + (t.status || 'unpaid').slice(1),
+            (t.total || 0).toFixed(2), (t.received || 0).toFixed(2), (t.txn_balance || 0).toFixed(2),
+            (t.receivable_balance || 0).toFixed(2), (t.payable_balance || 0).toFixed(2)
+          ]);
+        });
+        // Add total row
+        var s = _psData.summary || {};
+        rows.push(['', '', '', 'Total', '', '', '', (s.total_receivable || 0).toFixed(2), (s.total_payable || 0).toFixed(2)]);
+
+        var suffix = (p.name || 'party').replace(/[^a-zA-Z0-9]/g, '_') + '_statement';
+        if (fmt === 'csv') { downloadCSV(rows, suffix + '.csv'); showToast('CSV downloaded!', 'success'); }
+        else if (fmt === 'excel') { downloadExcel(rows, suffix + '.xlsx', 'Party Statement'); showToast('Excel downloaded!', 'success'); }
+        else if (fmt === 'pdf') {
+          _downloadPartyStatementPDF(_psData);
+          showToast('PDF downloaded!', 'success');
+        }
+        dlMenu.classList.remove('open');
+      });
+    })();
+
+    // Auto-load
+    loadStatement();
+  }
+
+  // Generate party statement PDF matching the Vyapar format
+  function _downloadPartyStatementPDF(data) {
+    try {
+      var _jsPDF = null;
+      if (window.jspdf && window.jspdf.jsPDF) _jsPDF = window.jspdf.jsPDF;
+      else if (typeof jsPDF !== 'undefined') _jsPDF = jsPDF;
+      if (!_jsPDF) { showToast('PDF library not loaded', 'error'); return; }
+      if (window.jspdf_autotable && window.jspdf_autotable.applyPlugin) window.jspdf_autotable.applyPlugin(_jsPDF);
+
+      var u = currentUser || {};
+      var p = data.party || {};
+      var txns = data.transactions || [];
+      var summary = data.summary || {};
+
+      var doc = new _jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+      var pageW = doc.internal.pageSize.getWidth();
+      var y = 12;
+
+      // Business header
+      doc.setFontSize(14);
+      doc.setFont(undefined, 'bold');
+      doc.text(u.business_name || u.name || '', 14, y); y += 5;
+      doc.setFontSize(8);
+      doc.setFont(undefined, 'normal');
+      doc.setTextColor(80);
+      if (u.address || u.city) { doc.text([u.address, u.city, u.state, u.pincode].filter(Boolean).join(', '), 14, y); y += 3.5; }
+      if (u.phone) { doc.text('Phone no.: ' + u.phone + (u.email ? '  Email: ' + u.email : ''), 14, y); y += 3.5; }
+      if (u.gstin) { doc.text('GSTIN: ' + u.gstin + (u.state ? ', State: ' + u.state : ''), 14, y); y += 3.5; }
+      doc.setTextColor(0);
+
+      // Title
+      y += 3;
+      doc.setFontSize(11);
+      doc.setFont(undefined, 'bold');
+      doc.text('Party Statement', 14, y); y += 5;
+
+      // Party info
+      doc.setFontSize(8.5);
+      doc.setFont(undefined, 'bold');
+      doc.text('Party name: ' + (p.name || ''), 14, y); y += 3.5;
+      doc.setFont(undefined, 'normal');
+      doc.setTextColor(80);
+      if (p.address) { doc.text(p.address, 14, y); y += 3.5; }
+      if (p.city || p.state) { doc.text([p.city, p.state].filter(Boolean).join(', ') + (p.pincode ? '-' + p.pincode : ''), 14, y); y += 3.5; }
+      if (p.gstin) { doc.text('GSTIN: ' + p.gstin, 14, y); y += 3.5; }
+      doc.setTextColor(0);
+      y += 2;
+
+      // Table
+      var headers = ['Date', 'Txn Type', 'Ref No.', 'Payment\nStatus', 'Total', 'Received /\nPaid', 'Txn Balance', 'Receivable\nBalance', 'Payable\nBalance'];
+      var body = txns.map(function(t) {
+        return [
+          formatDateSlash(t.date), t.type, t.ref_no || '-',
+          (t.status || 'unpaid').charAt(0).toUpperCase() + (t.status || 'unpaid').slice(1),
+          '\u20B9 ' + formatINR(t.total), '\u20B9 ' + formatINR(t.received),
+          '\u20B9 ' + formatINR(t.txn_balance),
+          '\u20B9 ' + formatINR(t.receivable_balance),
+          '\u20B9 ' + formatINR(t.payable_balance)
+        ];
+      });
+      // Total row
+      body.push(['', '', '', '', '', '', 'Total',
+        '\u20B9 ' + formatINR(summary.total_receivable || 0),
+        '\u20B9 ' + formatINR(summary.total_payable || 0)
+      ]);
+
+      var tableOpts = {
+        head: [headers],
+        body: body,
+        startY: y,
+        theme: 'grid',
+        styles: { fontSize: 7.5, cellPadding: 2, lineColor: [200, 200, 200], lineWidth: 0.2 },
+        headStyles: { fillColor: [240, 240, 240], textColor: [30, 30, 30], fontStyle: 'bold', fontSize: 7 },
+        columnStyles: {
+          4: { halign: 'right' }, 5: { halign: 'right' }, 6: { halign: 'right' },
+          7: { halign: 'right', fontStyle: 'bold' }, 8: { halign: 'right', fontStyle: 'bold' }
+        },
+        margin: { left: 10, right: 10 },
+        didParseCell: function(data) {
+          // Bold the total row
+          if (data.row.index === body.length - 1) {
+            data.cell.styles.fontStyle = 'bold';
+          }
+        }
+      };
+
+      if (typeof doc.autoTable === 'function') doc.autoTable(tableOpts);
+      else if (window.jspdf_autotable && typeof window.jspdf_autotable.autoTable === 'function') window.jspdf_autotable.autoTable(doc, tableOpts);
+      else if (typeof autoTable === 'function') autoTable(doc, tableOpts);
+      else { showToast('AutoTable plugin not loaded', 'error'); return; }
+
+      // Footer
+      var pageCount = doc.internal.getNumberOfPages();
+      for (var i = 1; i <= pageCount; i++) {
+        doc.setPage(i);
+        doc.setFontSize(7);
+        doc.setTextColor(150);
+        doc.text('-- ' + i + ' of ' + pageCount + ' --', pageW / 2, doc.internal.pageSize.getHeight() - 6, { align: 'center' });
+      }
+
+      doc.save((p.name || 'party').replace(/[^a-zA-Z0-9 ]/g, '') + ' statement.pdf');
+    } catch(e) {
+      console.error('PDF generation error:', e);
+      showToast('PDF failed: ' + e.message, 'error');
+    }
   }
 
   // ── Add Item Page ──────────────────────────────────────────
