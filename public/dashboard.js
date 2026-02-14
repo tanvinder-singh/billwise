@@ -235,20 +235,28 @@
     input.setAttribute('autocomplete', 'off');
     var _data = [];
 
-    input.addEventListener('input', function () {
-      var q = input.value.trim();
-      if (q.length < 1) { dropdown.classList.remove('open'); return; }
-      clearTimeout(_acTimers[endpoint + input.id]);
-      _acTimers[endpoint + input.id] = setTimeout(function () {
+    function doSearch(q) {
+      var key = endpoint + (input.id || Math.random());
+      clearTimeout(_acTimers[key]);
+      _acTimers[key] = setTimeout(function () {
         api('GET', endpoint + '?q=' + encodeURIComponent(q)).then(function (res) {
           _data = res.parties || res.products || res.invoices || res.documents || res.payments || [];
-          if (!_data.length) { dropdown.classList.remove('open'); return; }
+          if (!_data.length) {
+            dropdown.innerHTML = '<div class="ac-empty">No results found</div>';
+            dropdown.classList.add('open');
+            return;
+          }
           dropdown.innerHTML = _data.map(function (d, i) {
             return '<div class="ac-item" data-idx="' + i + '">' + renderFn(d, q) + '</div>';
           }).join('');
           dropdown.classList.add('open');
         });
-      }, 250);
+      }, q ? 200 : 50);
+    }
+
+    input.addEventListener('input', function () {
+      var q = input.value.trim();
+      doSearch(q);
     });
 
     dropdown.addEventListener('mousedown', function (e) {
@@ -263,10 +271,9 @@
       setTimeout(function () { dropdown.classList.remove('open'); }, 200);
     });
 
+    // On focus, load all items immediately
     input.addEventListener('focus', function () {
-      if (input.value.trim().length >= 1 && dropdown.children.length) {
-        dropdown.classList.add('open');
-      }
+      doSearch(input.value.trim());
     });
   }
 
