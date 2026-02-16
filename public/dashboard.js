@@ -1788,7 +1788,7 @@
         { id: 'elegant', name: 'Elegant', color: '#1e3a5f', desc: 'Navy & gold, serif fonts' },
         { id: 'minimal', name: 'Minimal', color: '#64748b', desc: 'No color, thin lines' },
         { id: 'bold', name: 'Bold', color: '#dc2626', desc: 'Red accent, high contrast' },
-        { id: 'busy', name: 'Busy', color: '#ea580c', desc: 'Orange, accounting style' }
+        { id: 'busy', name: 'Busy', color: '#1e3a8a', desc: 'Blue, bordered, accounting' }
       ];
       html += '<div class="no-print theme-selector"><span class="theme-label">Invoice Theme:</span><div class="theme-options">';
       themes.forEach(function (t) {
@@ -4899,7 +4899,7 @@
         themePreviewCard('elegant', 'Elegant', '#1e3a5f', 'Navy & gold accents, serif fonts, decorative', u.invoice_theme) +
         themePreviewCard('minimal', 'Minimal', '#64748b', 'No colored headers, thin lines, clean and light', u.invoice_theme) +
         themePreviewCard('bold', 'Bold', '#dc2626', 'Red accents, dark header, high contrast', u.invoice_theme) +
-        themePreviewCard('busy', 'Busy', '#ea580c', 'Warm orange, dense accounting style, strong borders', u.invoice_theme) +
+        themePreviewCard('busy', 'Busy', '#1e3a8a', 'Blue header, bordered sections, Busy Accounting style', u.invoice_theme) +
       '</div></div>' +
 
       '<div class="form-card"><h3>GSTIN Lookup API Key</h3>' +
