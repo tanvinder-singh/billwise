@@ -2627,7 +2627,7 @@
       html += '<div class="table-card"><div class="table-header"><h3>' + meta.plural + ' (' + list.length + ')</h3></div>';
       if (list.length) {
         html += '<div class="table-wrap"><table><thead><tr>' +
-          '<th>' + meta.prefix + ' #</th><th>Date</th><th>Customer</th><th class="text-right">Amount</th><th>Status</th></tr></thead><tbody>';
+          '<th>' + meta.prefix + ' #</th><th>Date</th><th>Customer</th><th class="text-right">Amount</th><th>Status</th><th class="text-center">Actions</th></tr></thead><tbody>';
         list.forEach(function (doc) {
           var docId = doc.id || doc._id;
           var badge = saleDocStatusBadge(doc.status);
@@ -2639,7 +2639,15 @@
           html += '<tr style="cursor:pointer" onclick="window.goTo(\'' + meta.detailPage + '\',\'' + docId + '\')">' +
             '<td><strong>' + doc.doc_number + '</strong></td><td>' + formatDate(doc.doc_date) + '</td>' +
             '<td>' + (doc.customer_name || '-') + '</td><td class="text-right">' + formatINR(doc.total || 0) + '</td>' +
-            '<td>' + badge + '</td></tr>';
+            '<td>' + badge + '</td>' +
+            '<td class="inv-row-actions" onclick="event.stopPropagation()">' +
+              '<button type="button" class="row-action-btn view-btn" onclick="window.goTo(\'' + meta.detailPage + '\',\'' + docId + '\')" title="View">' +
+                '<svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>' +
+              '</button>' +
+              '<button type="button" class="row-action-btn del-btn" onclick="window.deleteSaleDoc(\'' + docId + '\',\'' + docType + '\')" title="Delete">' +
+                '<svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>' +
+              '</button>' +
+            '</td></tr>';
         });
         html += '</tbody></table></div>';
       } else {
@@ -2660,6 +2668,17 @@
       $content.innerHTML = '<div class="empty-state">Failed to load ' + meta.plural.toLowerCase() + '.</div>';
     });
   }
+
+  // ── Inline sale doc actions ──
+  window.deleteSaleDoc = function (id, docType) {
+    var meta = SALE_DOC_META[docType];
+    if (!confirm('Delete this ' + meta.title.toLowerCase() + '? This cannot be undone.')) return;
+    api('DELETE', '/api/sale-docs/' + id).then(function (d) {
+      if (d.error) return showToast(d.error, 'error');
+      showToast('Deleted', 'success');
+      renderSaleDocList(docType);
+    }).catch(function () { showToast('Failed to delete', 'error'); });
+  };
 
   // ── Shared Create Form ──
   var saleDocItemCounter = 0;
@@ -3189,7 +3208,7 @@
       html += '<div class="table-card"><div class="table-header"><h3>Payments Received (' + list.length + ')</h3></div>';
       if (list.length) {
         html += '<div class="table-wrap"><table><thead><tr>' +
-          '<th>Payment #</th><th>Date</th><th>Party</th><th>Mode</th><th class="text-right">Amount</th><th>Reference</th><th style="width:60px"></th></tr></thead><tbody>';
+          '<th>Payment #</th><th>Date</th><th>Party</th><th>Mode</th><th class="text-right">Amount</th><th>Reference</th><th class="text-center">Actions</th></tr></thead><tbody>';
         list.forEach(function (pay) {
           var payId = pay.id || pay._id;
           html += '<tr>' +
@@ -3199,7 +3218,11 @@
             '<td><span class="payment-mode-badge">' + (pay.payment_mode || 'cash').toUpperCase() + '</span></td>' +
             '<td class="text-right" style="font-weight:700;color:var(--success)">' + formatINR(pay.amount || 0) + '</td>' +
             '<td>' + esc(pay.reference_number || '-') + '</td>' +
-            '<td><button type="button" class="btn btn-sm btn-danger" onclick="event.stopPropagation();window.deletePaymentIn(\'' + payId + '\')" title="Delete">Delete</button></td></tr>';
+            '<td class="inv-row-actions">' +
+              '<button type="button" class="row-action-btn del-btn" onclick="event.stopPropagation();window.deletePaymentIn(\'' + payId + '\')" title="Delete">' +
+                '<svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>' +
+              '</button>' +
+            '</td></tr>';
         });
         html += '</tbody></table></div>';
       } else {
@@ -3420,7 +3443,15 @@
           html += '<div class="invoice-card" onclick="window.goTo(\'' + meta.viewPage + '\',\'' + d.id + '\')" style="cursor:pointer">' +
             '<div class="inv-row"><strong>' + esc(d.doc_number) + '</strong> ' + purchaseStatusBadge(d.status) +
             '<span class="inv-total">' + formatINR(d.total) + '</span></div>' +
-            '<div class="inv-row"><span>' + esc(d.supplier_name || 'No supplier') + '</span><span style="color:var(--text-muted);font-size:0.85rem">' + formatDate(d.doc_date) + '</span></div></div>';
+            '<div class="inv-row"><span>' + esc(d.supplier_name || 'No supplier') + '</span><span style="color:var(--text-muted);font-size:0.85rem">' + formatDate(d.doc_date) + '</span></div>' +
+            '<div class="inv-row-actions" style="text-align:right;margin-top:6px" onclick="event.stopPropagation()">' +
+              '<button type="button" class="row-action-btn view-btn" onclick="window.goTo(\'' + meta.viewPage + '\',\'' + d.id + '\')" title="View">' +
+                '<svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>' +
+              '</button>' +
+              '<button type="button" class="row-action-btn del-btn" onclick="window.deletePurchaseDoc(\'' + d.id + '\',\'' + docType + '\')" title="Delete">' +
+                '<svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>' +
+              '</button>' +
+            '</div></div>';
         });
         html += '</div>';
       }
@@ -3985,7 +4016,11 @@
       '<span class="payment-amount">' + formatINR(p.amount) + '</span></div>' +
       '<div class="inv-row"><span>' + esc(p.party_name || 'Unknown') + '</span>' +
       '<span style="color:var(--text-muted);font-size:0.85rem">' + formatDate(p.payment_date) + '</span></div>' +
-      '<div style="text-align:right;margin-top:4px"><button class="btn btn-sm btn-danger" onclick="event.stopPropagation();deletePaymentOut(\'' + p.id + '\')">Delete</button></div></div>';
+      '<div class="inv-row-actions" style="text-align:right;margin-top:6px" onclick="event.stopPropagation()">' +
+        '<button type="button" class="row-action-btn del-btn" onclick="window.deletePaymentOut(\'' + p.id + '\')" title="Delete">' +
+          '<svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>' +
+        '</button>' +
+      '</div></div>';
   }
 
   function poAttachFilter(allPayments) {
@@ -4045,6 +4080,17 @@
       }
     });
   }
+
+  // ── Inline purchase doc actions ──
+  window.deletePurchaseDoc = function (id, docType) {
+    var meta = PURCHASE_DOC_META[docType];
+    if (!confirm('Delete this ' + meta.singular.toLowerCase() + '? This cannot be undone.')) return;
+    api('DELETE', '/api/purchase-docs/' + id).then(function (d) {
+      if (d.error) return showToast(d.error, 'error');
+      showToast('Deleted', 'success');
+      renderPurchaseDocList(docType);
+    }).catch(function () { showToast('Failed to delete', 'error'); });
+  };
 
   window.deletePaymentOut = function (id) {
     if (!confirm('Delete this payment?')) return;
@@ -4341,7 +4387,14 @@
           '<td class="exp-amt-cell">' + formatINR(e.amount) + '</td>' +
           '<td>' + formatINR(e.amount) + '</td>' +
           '<td><span class="badge badge-paid">Paid</span></td>' +
-          '<td><button class="exp-cat-menu exp-row-del" data-id="' + e.id + '" title="Delete">&#8942;</button></td></tr>';
+          '<td class="inv-row-actions">' +
+            '<button type="button" class="row-action-btn view-btn" data-id="' + e.id + '" onclick="event.stopPropagation();window.goTo(\'expense\',\'' + e.id + '\')" title="View">' +
+              '<svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>' +
+            '</button>' +
+            '<button type="button" class="row-action-btn del-btn exp-row-del" data-id="' + e.id + '" title="Delete">' +
+              '<svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>' +
+            '</button>' +
+          '</td></tr>';
       });
     }
     h += '</tbody></table></div></div>';
