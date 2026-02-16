@@ -15,8 +15,8 @@
 set -e
 
 # ─── Configuration (edit these) ──────────────────────────
-EC2_IP="100.30.61.32"
-PEM_FILE="$HOME/Downloads/billwise.pem"
+EC2_IP="107.22.33.194"
+PEM_FILE="$HOME/Downloads/rupiya.pem"
 EC2_USER="ubuntu"
 APP_DIR="/home/ubuntu/rupiya"
 GITHUB_REPO="https://github.com/tanvinder-singh/billwise.git"
