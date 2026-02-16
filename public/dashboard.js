@@ -639,13 +639,44 @@
   function invoiceTableHTML(list) {
     var rows = list.map(function (inv) {
       var invId = inv.id || inv._id;
+      var isPaid = inv.status === 'paid';
       return '<tr style="cursor:pointer" onclick="window.goTo(\'invoice\',\'' + invId + '\')">' +
         '<td><strong>' + inv.invoice_number + '</strong></td><td>' + formatDate(inv.invoice_date) + '</td>' +
         '<td>' + inv.customer_name + '</td><td class="text-right">' + formatINR(inv.total) + '</td>' +
-        '<td>' + statusBadge(inv.status) + '</td></tr>';
+        '<td>' + statusBadge(inv.status) + '</td>' +
+        '<td class="inv-row-actions" onclick="event.stopPropagation()">' +
+          '<button type="button" class="row-action-btn view-btn" onclick="window.goTo(\'invoice\',\'' + invId + '\')" title="View Invoice">' +
+            '<svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>' +
+          '</button>' +
+          (isPaid ? '' :
+          '<button type="button" class="row-action-btn paid-btn" onclick="window.markInvPaid(\'' + invId + '\',' + (inv.total || 0) + ')" title="Mark as Paid">' +
+            '<svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>' +
+          '</button>') +
+          '<button type="button" class="row-action-btn del-btn" onclick="window.deleteInv(\'' + invId + '\')" title="Delete Invoice">' +
+            '<svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>' +
+          '</button>' +
+        '</td></tr>';
     }).join('');
-    return '<div class="table-wrap"><table><thead><tr><th>Invoice #</th><th>Date</th><th>Customer</th><th class="text-right">Amount</th><th>Status</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
+    return '<div class="table-wrap"><table><thead><tr><th>Invoice #</th><th>Date</th><th>Customer</th><th class="text-right">Amount</th><th>Status</th><th class="text-center">Actions</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
   }
+
+  // ── Inline invoice actions (used from table rows) ──
+  window.markInvPaid = function (id, total) {
+    if (!confirm('Mark this invoice as paid?')) return;
+    api('PATCH', '/api/invoices/' + id, { status: 'paid', amount_paid: total }).then(function (d) {
+      showToast(d.message || 'Marked as paid!', 'success');
+      if (currentPage === 'invoices') renderInvoiceList();
+      else renderOverview();
+    });
+  };
+  window.deleteInv = function (id) {
+    if (!confirm('Delete this invoice? This cannot be undone.')) return;
+    api('DELETE', '/api/invoices/' + id).then(function (d) {
+      showToast(d.message || 'Deleted', 'success');
+      if (currentPage === 'invoices') renderInvoiceList();
+      else renderOverview();
+    });
+  };
 
   // ── Parties Page ──────────────────────────────────────────
   function renderParties() {

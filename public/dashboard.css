@@ -168,6 +168,18 @@ td { padding:12px 16px; border-top:1px solid var(--border); font-size:0.9375rem;
 tr:hover td { background:rgba(241,245,249,0.5); }
 .empty-state { padding:48px 24px; text-align:center; color:var(--text-muted); }
 
+/* Inline row actions */
+.inv-row-actions { white-space:nowrap; text-align:center; }
+.row-action-btn {
+  width:30px; height:30px; border-radius:6px; border:1px solid var(--border);
+  background:var(--surface); cursor:pointer; display:inline-flex; align-items:center; justify-content:center;
+  transition:all 0.15s; color:var(--text-muted); margin:0 2px; vertical-align:middle;
+}
+.row-action-btn:hover { border-color:var(--primary); color:var(--primary); background:#f0fdfa; }
+.row-action-btn.paid-btn:hover { border-color:#059669; color:#059669; background:#d1fae5; }
+.row-action-btn.del-btn:hover { border-color:#dc2626; color:#dc2626; background:#fee2e2; }
+.row-action-btn.view-btn:hover { border-color:#6366f1; color:#6366f1; background:#eef2ff; }
+
 /* Badges */
 .badge { display:inline-block; padding:3px 10px; border-radius:999px; font-size:0.75rem; font-weight:600; }
 .badge-paid { background:#d1fae5; color:#065f46; }
