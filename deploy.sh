@@ -13,7 +13,7 @@ set -e
 EC2_IP="107.22.33.194"
 PEM_FILE="$HOME/Downloads/rupiya.pem"
 EC2_USER="ubuntu"
-APP_DIR="/home/ubuntu/billwise"
+APP_DIR="/home/ubuntu/rupiya"
 # ─────────────────────────────────────────────────────────
 
 RED='\033[0;31m'
@@ -75,7 +75,7 @@ echo -e "${YELLOW}[3/4] Restarting app...${NC}"
 ssh -i "$PEM_FILE" -o StrictHostKeyChecking=no "$EC2_USER@$EC2_IP" << REMOTE_RESTART
   set -e
   cd $APP_DIR
-  pm2 restart billwise
+  pm2 restart rupiya
   sleep 2
   pm2 status
 REMOTE_RESTART
