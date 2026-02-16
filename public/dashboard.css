@@ -1205,6 +1205,56 @@ tr:hover td { background:rgba(241,245,249,0.5); }
 .theme-bold .bank-sig-table td { border-color:#374151; }
 
 /* ============================================
+   THEME: Busy (Warm orange, accounting style)
+   ============================================ */
+.theme-busy .inv-title-bar {
+  background:#ea580c !important; color:#fff;
+  padding:14px 24px; border-bottom:3px solid #c2410c;
+}
+.theme-busy .inv-title-bar h2 {
+  font-weight:800; letter-spacing:0.06em; text-transform:uppercase; font-size:1.15rem;
+}
+.theme-busy .inv-biz-header {
+  padding:18px 24px 14px; border-bottom:2px solid #fed7aa;
+}
+.theme-busy .inv-biz-header .biz-name {
+  color:#9a3412; font-weight:800; font-size:1.35rem;
+}
+.theme-busy .inv-biz-header p { color:#78350f; }
+.theme-busy .inv-info-row {
+  background:#fff7ed; border-bottom:2px solid #fdba74;
+}
+.theme-busy .inv-info-label { color:#ea580c; font-weight:700; text-transform:uppercase; letter-spacing:0.03em; }
+.theme-busy .inv-info-row p { color:#431407; }
+.theme-busy .inv-items-table th {
+  background:#fff7ed; color:#9a3412; border-bottom:2px solid #ea580c;
+  font-weight:700; text-transform:uppercase; letter-spacing:0.03em;
+}
+.theme-busy .inv-items-table td { border-bottom:1px solid #fed7aa; color:#431407; }
+.theme-busy .inv-items-table tfoot td {
+  background:#fff7ed; border-top:2px double #ea580c; font-weight:700; color:#9a3412;
+}
+.theme-busy .inv-tax-summary th {
+  background:#fff7ed; color:#9a3412; border-color:#fdba74; font-weight:700;
+}
+.theme-busy .inv-tax-summary td { border-color:#fed7aa; color:#431407; }
+.theme-busy .inv-tax-summary .tax-total-row td {
+  background:#fff7ed; border-top:2px double #ea580c; font-weight:700; color:#9a3412;
+}
+.theme-busy .inv-words {
+  background:#fff7ed; color:#9a3412; font-weight:600;
+  border:1px solid #fdba74;
+}
+.theme-busy .inv-totals-section td { color:#431407; }
+.theme-busy .inv-totals-section .total-row td {
+  border-top:2px double #ea580c; color:#9a3412; font-weight:800;
+}
+.theme-busy .inv-payment-section td { color:#431407; }
+.theme-busy .bank-sig-table { border-color:#fdba74; border-width:2px; }
+.theme-busy .bank-sig-table td { border-color:#fdba74; }
+.theme-busy .bank-cell .inv-info-label { color:#ea580c; }
+
+/* ============================================
    Print styles — force single A4 page
    ============================================ */
 @page { size:A4; margin:3mm 5mm; }
@@ -1294,6 +1344,7 @@ tr:hover td { background:rgba(241,245,249,0.5); }
   .theme-elegant .inv-title-bar { background:#1e3a5f !important; color:#f5deb3 !important; }
   .theme-minimal .inv-title-bar { background:transparent !important; color:#334155 !important; }
   .theme-bold .inv-title-bar { background:#1a1a2e !important; color:#fff !important; }
+  .theme-busy .inv-title-bar { background:#ea580c !important; color:#fff !important; }
   .inv-items-table thead, .inv-tax-summary thead, .inv-items-table tfoot td,
   .invoice-print .inv-info-row, .inv-words, .inv-tax-summary .tax-total-row td,
   .upi-badge, .badge, .badge-draft, .badge-sent, .badge-accepted, .badge-rejected,
