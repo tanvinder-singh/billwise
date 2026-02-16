@@ -815,6 +815,28 @@ app.post('/api/sale-docs', auth, async (req, res) => {
       created_at: now
     });
 
+    // Stock adjustment for sale returns: increase stock quantities for returned items
+    if (doc_type === 'sale_return' && items && items.length) {
+      try {
+        const user = await users.findOne({ id: req.user.id });
+        const itemSettings = user && user.item_settings ? user.item_settings : {};
+        if (itemSettings.stock) {
+          for (const item of items) {
+            if (item.name && item.qty) {
+              const product = await products.findOne({ user_id: req.user.id, name: item.name });
+              if (product) {
+                const newQty = (product.stock_quantity || 0) + parseFloat(item.qty);
+                await products.update({ id: product.id }, { $set: { stock_quantity: newQty } });
+              }
+            }
+          }
+        }
+      } catch (stockErr) {
+        console.error('Stock adjustment error:', stockErr);
+        // Don't fail the sale return creation if stock adjustment fails
+      }
+    }
+
     res.json({ document: doc, message: DOC_TITLES[doc_type] + ' ' + doc_number + ' created!' });
   } catch (e) {
     console.error(e);

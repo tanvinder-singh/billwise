@@ -1296,7 +1296,8 @@ tr:hover td { background:rgba(241,245,249,0.5); }
   .theme-bold .inv-title-bar { background:#1a1a2e !important; color:#fff !important; }
   .inv-items-table thead, .inv-tax-summary thead, .inv-items-table tfoot td,
   .invoice-print .inv-info-row, .inv-words, .inv-tax-summary .tax-total-row td,
-  .upi-badge {
+  .upi-badge, .badge, .badge-draft, .badge-sent, .badge-accepted, .badge-rejected,
+  .badge-converted, .badge-expired, .badge-delivered, .badge-refunded, .badge-partial {
     -webkit-print-color-adjust:exact; print-color-adjust:exact; color-adjust:exact;
   }
   .theme-bold .inv-items-table th, .theme-bold .inv-tax-summary th {

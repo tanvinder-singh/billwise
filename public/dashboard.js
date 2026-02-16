@@ -3157,15 +3157,17 @@
       html += '<div class="table-card"><div class="table-header"><h3>Payments Received (' + list.length + ')</h3></div>';
       if (list.length) {
         html += '<div class="table-wrap"><table><thead><tr>' +
-          '<th>Payment #</th><th>Date</th><th>Party</th><th>Mode</th><th class="text-right">Amount</th><th>Reference</th></tr></thead><tbody>';
+          '<th>Payment #</th><th>Date</th><th>Party</th><th>Mode</th><th class="text-right">Amount</th><th>Reference</th><th style="width:60px"></th></tr></thead><tbody>';
         list.forEach(function (pay) {
+          var payId = pay.id || pay._id;
           html += '<tr>' +
             '<td><strong>' + pay.payment_number + '</strong></td>' +
             '<td>' + formatDate(pay.payment_date) + '</td>' +
             '<td>' + esc(pay.party_name || '-') + '</td>' +
             '<td><span class="payment-mode-badge">' + (pay.payment_mode || 'cash').toUpperCase() + '</span></td>' +
             '<td class="text-right" style="font-weight:700;color:var(--success)">' + formatINR(pay.amount || 0) + '</td>' +
-            '<td>' + esc(pay.reference_number || '-') + '</td></tr>';
+            '<td>' + esc(pay.reference_number || '-') + '</td>' +
+            '<td><button type="button" class="btn btn-sm btn-danger" onclick="event.stopPropagation();window.deletePaymentIn(\'' + payId + '\')" title="Delete">Delete</button></td></tr>';
         });
         html += '</tbody></table></div>';
       } else {
@@ -3191,6 +3193,15 @@
       $content.innerHTML = '<div class="empty-state">Failed to load payments.</div>';
     });
   }
+
+  window.deletePaymentIn = function (id) {
+    if (!confirm('Delete this payment? This will reverse the invoice amount if linked.')) return;
+    api('DELETE', '/api/payments-in/' + id).then(function (r) {
+      if (r.error) return showToast(r.error, 'error');
+      showToast(r.message || 'Payment deleted', 'success');
+      renderPaymentsInList();
+    }).catch(function () { showToast('Failed to delete payment', 'error'); });
+  };
 
   function renderNewPaymentIn() {
     $pageTitle.textContent = 'Record Payment';
@@ -3283,16 +3294,21 @@
         container.innerHTML = '<p style="color:var(--text-muted);font-size:0.875rem">No unpaid invoices for this party.</p>';
         return;
       }
+      var totalOutstanding = 0;
       var html = '<div style="display:flex;flex-direction:column;gap:8px;max-height:200px;overflow-y:auto">';
       invList.forEach(function (inv) {
         var invId = inv.id || inv._id;
         var outstanding = (inv.total || 0) - (inv.amount_paid || 0);
+        totalOutstanding += outstanding;
         html += '<div class="inv-select-card" data-inv-id="' + invId + '" data-outstanding="' + outstanding + '">' +
           '<div><strong>' + inv.invoice_number + '</strong><br><small>' + formatDate(inv.invoice_date) + '</small></div>' +
           '<div style="text-align:right"><div>Total: ' + formatINR(inv.total || 0) + '</div>' +
           '<div class="inv-outstanding">Outstanding: ' + formatINR(outstanding) + '</div></div></div>';
       });
       html += '</div>';
+      html += '<div style="margin-top:8px;padding:8px 12px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;display:flex;justify-content:space-between;align-items:center">' +
+        '<span style="font-size:0.8125rem;color:#991b1b;font-weight:500">Total Outstanding (' + invList.length + ' invoice' + (invList.length > 1 ? 's' : '') + ')</span>' +
+        '<span style="font-size:0.9375rem;color:#dc2626;font-weight:700">' + formatINR(totalOutstanding) + '</span></div>';
       container.innerHTML = html;
 
       // Click to select invoice
@@ -4646,7 +4662,13 @@
     var hsnData = data.hsn_summary || [];
 
     var filterLabel = customerFilter ? ' &mdash; ' + esc(customerFilter) : '';
-    var html = '<div class="stats-grid">' +
+    var html = '';
+    if (customerFilter) {
+      html += '<div style="padding:12px 16px;background:#eef2ff;border:1px solid #c7d2fe;border-radius:8px;margin-bottom:16px;display:flex;align-items:center;gap:8px">' +
+        '<svg width="18" height="18" fill="none" stroke="#4f46e5" stroke-width="2" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>' +
+        '<strong style="color:#4f46e5">Customer: ' + esc(customerFilter) + '</strong></div>';
+    }
+    html += '<div class="stats-grid">' +
       statCard('Invoices', s.total_invoices || 0, '') +
       statCard('Total Sales', formatINR(s.total_amount || 0), 'primary') +
       statCard('Total Tax', formatINR(s.total_tax || 0), 'warning') +
