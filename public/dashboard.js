@@ -95,7 +95,7 @@
         case 'expense':         renderExpenseDetail(param); break;
         case 'reports':     renderReports(); break;
         case 'admin':       renderAdmin(); break;
-        case 'settings':    renderSettings(); break;
+        case 'settings':    renderSettings(param); break;
         default: renderOverview();
       }
     } catch (err) {
@@ -667,7 +667,7 @@
         '<div class="action-grid">' +
           actionCardHTML(overdueInvoices.length ? 'danger' : 'success', 'Overdue Receivables', overdueInvoices.length ? formatINR(overdueAmount) : 'Clear', overdueInvoices.length ? (overdueInvoices.length + ' invoice' + (overdueInvoices.length === 1 ? '' : 's') + ' past due') : 'No overdue customer payments', overdueInvoices.length ? 'Review Invoices' : 'All Good', 'window.goTo(\'invoices\')') +
           actionCardHTML(dueSoonInvoices.length ? 'warning' : 'neutral', 'Due This Week', dueSoonInvoices.length ? formatINR(dueSoonAmount) : 'None', dueSoonInvoices.length ? (dueSoonInvoices.length + ' payment' + (dueSoonInvoices.length === 1 ? '' : 's') + ' coming up') : 'No near-term receivables', 'View Invoices', 'window.goTo(\'invoices\')') +
-          actionCardHTML(lowStockItems.length ? 'warning' : 'neutral', 'Stock Alerts', lowStockItems.length ? lowStockItems.length + ' item' + (lowStockItems.length === 1 ? '' : 's') : 'Off', itemSettings.stock ? (lowStockItems.length ? 'At or below low-stock threshold' : 'Inventory levels look healthy') : 'Enable stock tracking in item settings', itemSettings.stock ? 'Open Inventory' : 'Set Up Stock', itemSettings.stock ? 'window.goTo(\'inventory\')' : 'window.goTo(\'settings\')') +
+          actionCardHTML(lowStockItems.length ? 'warning' : 'neutral', 'Stock Alerts', lowStockItems.length ? lowStockItems.length + ' item' + (lowStockItems.length === 1 ? '' : 's') : 'Off', itemSettings.stock ? (lowStockItems.length ? 'At or below low-stock threshold' : 'Inventory levels look healthy') : 'Enable stock tracking in settings', itemSettings.stock ? 'Open Inventory' : 'Set Up Stock', itemSettings.stock ? 'window.goTo(\'inventory\')' : 'window.goTo(\'settings\',\'stock\')') +
           actionCardHTML(profileReadyPct === 100 ? 'success' : 'warning', 'Invoice Profile', profileReadyPct + '% ready', profileReadyPct === 100 ? 'Business details are ready for invoices' : 'Add GSTIN, address, state, and business name', 'Open Settings', 'window.goTo(\'settings\')') +
         '</div></div>';
 
@@ -1151,15 +1151,61 @@
     ]);
   }
 
+  function enableStockTracking(onSuccess) {
+    var is = (currentUser && currentUser.item_settings) ? Object.assign({}, currentUser.item_settings) : {};
+    is.stock = true;
+    if (!is.low_stock_threshold) is.low_stock_threshold = 10;
+    return api('PUT', '/api/auth/profile', { item_settings: is }).then(function (data) {
+      if (data.error) throw new Error(data.error);
+      currentUser = data.user;
+      showToast('Stock tracking enabled!', 'success');
+      if (onSuccess) onSuccess();
+      return data;
+    });
+  }
+
+  function renderInventoryStockOffState() {
+    return '<div class="inv-enable-card" id="stockSettingsSection">' +
+      '<div class="inv-enable-icon"><svg width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M3 3h18v4H3zM3 11h18v10H3zM7 7v0M7 15h4M7 19h10"/></svg></div>' +
+      '<h3>Stock tracking is off</h3>' +
+      '<p>Enable stock maintenance to track inventory from sales, purchases, and returns.</p>' +
+      '<label class="inv-enable-check"><input type="checkbox" id="invEnableStock" checked> <span>Enable Stock Maintenance</span></label>' +
+      '<div class="inv-enable-actions">' +
+        '<button type="button" class="btn btn-primary" id="invEnableBtn">Enable & Open Inventory</button>' +
+        '<button type="button" class="btn btn-outline" onclick="window.goTo(\'settings\',\'stock\')">Open Settings</button>' +
+      '</div>' +
+      '<p class="inv-enable-hint">You can also find this under <strong>Settings → Stock &amp; Inventory</strong>.</p>' +
+    '</div>';
+  }
+
+  function bindInventoryStockOffState() {
+    var btn = document.getElementById('invEnableBtn');
+    if (!btn) return;
+    btn.addEventListener('click', function () {
+      var cb = document.getElementById('invEnableStock');
+      if (cb && !cb.checked) {
+        window.goTo('settings', 'stock');
+        return;
+      }
+      btn.disabled = true;
+      btn.textContent = 'Enabling...';
+      enableStockTracking(function () {
+        renderInventory();
+      }).catch(function () {
+        btn.disabled = false;
+        btn.textContent = 'Enable & Open Inventory';
+        showToast('Failed to enable stock tracking', 'error');
+      });
+    });
+  }
+
   function renderInventory(productFilter, typeFilter) {
     $pageTitle.textContent = 'Inventory';
     $content.innerHTML = '<p style="color:var(--text-muted)">Loading...</p>';
     var itemSettings = (currentUser && currentUser.item_settings) || {};
     if (!itemSettings.stock) {
-      $content.innerHTML = '<div class="empty-state" style="padding:48px 24px">' +
-        '<h3 style="margin:0 0 8px">Stock tracking is off</h3>' +
-        '<p style="color:var(--text-muted);margin:0 0 16px">Enable <strong>Stock Maintenance</strong> in Settings to track inventory from sales and purchases.</p>' +
-        '<button type="button" class="btn btn-primary" onclick="window.goTo(\'settings\')">Open Settings</button></div>';
+      $content.innerHTML = renderInventoryStockOffState();
+      bindInventoryStockOffState();
       return;
     }
 
@@ -5280,9 +5326,10 @@
   }
 
   // ── Settings ───────────────────────────────────────────────
-  function renderSettings() {
+  function renderSettings(scrollTo) {
     $pageTitle.textContent = 'Business Settings';
     var u = currentUser || {};
+    var is = (u.item_settings && typeof u.item_settings === 'object') ? u.item_settings : {};
 
     var html = '<form id="settingsForm">' +
       '<div class="form-card"><h3>Business Profile</h3>' +
@@ -5312,9 +5359,20 @@
       '</div>' +
       '</div>' +
 
+      '<div class="form-card settings-highlight-target" id="stockSettingsSection">' +
+        '<h3>Stock &amp; Inventory</h3>' +
+        '<p style="color:var(--text-muted);font-size:0.875rem;margin:0 0 16px">Turn on stock tracking to manage inventory from sales, purchases, returns, and manual adjustments.</p>' +
+        '<label class="is-check-row" style="margin-bottom:12px"><input type="checkbox" id="isStock" ' + (is.stock ? 'checked' : '') + '><span><strong>Enable Stock Maintenance</strong></span></label>' +
+        '<div class="is-sub-row" id="stockThresholdRow" style="' + (is.stock ? '' : 'display:none') + ';margin-left:28px;margin-bottom:12px">' +
+          '<label class="is-label-sm">Low Stock Alert Threshold</label>' +
+          '<input type="number" id="isLowStockThreshold" class="is-input-sm" value="' + (is.low_stock_threshold || 10) + '" min="0" step="1">' +
+        '</div>' +
+        '<label class="is-check-row" style="margin-left:28px"><input type="checkbox" id="isShowLowStockDialog" ' + (is.show_low_stock_dialog ? 'checked' : '') + '><span>Show Low Stock Dialog</span></label>' +
+        '<p style="color:var(--text-muted);font-size:0.8125rem;margin:16px 0 0">After enabling, open <strong>Inventory</strong> in the sidebar to view stock levels and movement history. Click <strong>Save Settings</strong> at the bottom of this page.</p>' +
+      '</div>' +
+
       // ── Item Settings Card (Vyapar-style 3 column) ──
       (function() {
-        var is = (u.item_settings && typeof u.item_settings === 'object') ? u.item_settings : {};
         var cats = is.categories || ['Electronics', 'Clothing', 'Food', 'Medicine', 'Other'];
         var cf = is.custom_fields_list || [];
         var cfHtml = '';
@@ -5337,12 +5395,6 @@
               '<select id="isSellType" class="is-select-sm"><option value="product"' + (is.sell_type === 'service' ? '' : ' selected') + '>Product/Service</option><option value="service"' + (is.sell_type === 'service' ? ' selected' : '') + '>Service</option></select>' +
             '</div>' +
             '<label class="is-check-row"><input type="checkbox" id="isBarcodeScan" ' + (is.barcode_scan ? 'checked' : '') + '><span>Barcode Scan</span></label>' +
-            '<label class="is-check-row"><input type="checkbox" id="isStock" ' + (is.stock ? 'checked' : '') + '><span>Stock Maintenance</span></label>' +
-            '<div class="is-sub-row" id="stockThresholdRow" style="' + (is.stock ? '' : 'display:none') + '">' +
-              '<label class="is-label-sm">Low Stock Alert Threshold</label>' +
-              '<input type="number" id="isLowStockThreshold" class="is-input-sm" value="' + (is.low_stock_threshold || 10) + '" min="0" step="1">' +
-            '</div>' +
-            '<label class="is-check-row"><input type="checkbox" id="isShowLowStockDialog" ' + (is.show_low_stock_dialog ? 'checked' : '') + '><span>Show Low Stock Dialog</span></label>' +
             '<label class="is-check-row"><input type="checkbox" id="isItemsUnit" ' + (is.items_unit !== false ? 'checked' : '') + '><span>Items Unit</span></label>' +
             '<label class="is-check-row is-indent"><input type="checkbox" id="isDefaultUnit" ' + (is.default_unit ? 'checked' : '') + '><span>Default Unit</span></label>' +
             '<label class="is-check-row"><input type="checkbox" id="isCategory" ' + (is.category ? 'checked' : '') + '><span>Item Category</span></label>' +
@@ -5458,6 +5510,17 @@
       '<div class="form-actions"><button type="submit" class="btn btn-primary">Save Settings</button></div></form>';
 
     $content.innerHTML = html;
+
+    if (scrollTo === 'stock') {
+      setTimeout(function () {
+        var el = document.getElementById('stockSettingsSection');
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          el.classList.add('settings-highlight');
+          setTimeout(function () { el.classList.remove('settings-highlight'); }, 2500);
+        }
+      }, 150);
+    }
 
     // ── Theme Preview Selection ──
     document.querySelectorAll('input[name="invoiceTheme"]').forEach(function (radio) {
