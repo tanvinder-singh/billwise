@@ -117,7 +117,7 @@
     if (!name) { signupError.textContent = 'Please enter your name.'; return; }
     if (!isValidEmail(email)) { signupError.textContent = 'Please enter a valid email.'; return; }
     if (!isValidMobile(mobile)) { signupError.textContent = 'Enter a valid 10-digit Indian mobile number.'; return; }
-    if (password.length < 6) { signupError.textContent = 'Password must be at least 6 characters.'; return; }
+    if (password.length < 8) { signupError.textContent = 'Password must be at least 8 characters.'; return; }
     if (password !== confirm) { signupError.textContent = 'Passwords do not match.'; return; }
 
     apiPost('/api/auth/register', { name: name, email: email, phone: mobile, password: password })

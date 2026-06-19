@@ -4,12 +4,46 @@ const path = require('path');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const nodemailer = require('nodemailer');
-const { initDB, users, invoices, otps, parties, products, saleDocuments, paymentsIn, purchaseDocuments, paymentsOut, expenses } = require('./database');
+const cors = require('cors');
+const { initDB, pool, users, invoices, otps, parties, products, saleDocuments, paymentsIn, purchaseDocuments, paymentsOut, expenses } = require('./database');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const JWT_SECRET = process.env.JWT_SECRET || 'rupiya-dev-secret-2024';
-const IS_DEV = !process.env.SMTP_HOST;
+const DEFAULT_JWT_SECRET = 'rupiya-dev-secret-2024';
+const JWT_SECRET = process.env.JWT_SECRET || DEFAULT_JWT_SECRET;
+const IS_PRODUCTION = process.env.NODE_ENV === 'production';
+const CAN_RETURN_DEV_OTP = !IS_PRODUCTION;
+const HAS_EMAIL_TRANSPORT = Boolean(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS);
+const HAS_SMS_TRANSPORT = Boolean(process.env.TWILIO_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_PHONE);
+const STARTED_AT = new Date();
+
+app.disable('x-powered-by');
+if (IS_PRODUCTION) app.set('trust proxy', 1);
+
+const allowedOrigins = (process.env.CORS_ORIGIN || '')
+  .split(',')
+  .map(origin => origin.trim())
+  .filter(Boolean);
+if (allowedOrigins.length) {
+  app.use(cors({
+    origin(origin, callback) {
+      if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
+      return callback(new Error('Not allowed by CORS'));
+    },
+    credentials: true
+  }));
+}
+
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  if (IS_PRODUCTION) {
+    res.setHeader('Strict-Transport-Security', 'max-age=15552000; includeSubDomains');
+  }
+  next();
+});
 
 app.use(express.json({ limit: '5mb' }));
 
@@ -18,6 +52,8 @@ app.use(express.static(path.join(__dirname, 'public'), {
   setHeaders: function (res, filePath) {
     if (filePath.endsWith('.html')) {
       res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    } else if (/\.(css|js|woff2?)$/.test(filePath)) {
+      res.setHeader('Cache-Control', 'public, max-age=31536000');
     }
   }
 }));
@@ -26,27 +62,89 @@ app.use(express.static(path.join(__dirname, 'public'), {
 let transporter = null;
 async function getTransporter() {
   if (transporter) return transporter;
-  if (process.env.SMTP_HOST) {
-    transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
-      port: Number(process.env.SMTP_PORT) || 587,
-      secure: process.env.SMTP_SECURE === 'true',
-      auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
-    });
-  } else {
-    const test = await nodemailer.createTestAccount();
-    transporter = nodemailer.createTransport({
-      host: 'smtp.ethereal.email', port: 587,
-      auth: { user: test.user, pass: test.pass }
-    });
-  }
+  if (!HAS_EMAIL_TRANSPORT) throw new Error('SMTP is not configured');
+  transporter = nodemailer.createTransport({
+    host: process.env.SMTP_HOST,
+    port: Number(process.env.SMTP_PORT) || 587,
+    secure: process.env.SMTP_SECURE === 'true',
+    auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
+  });
   return transporter;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const MOBILE_REGEX = /^[6-9][0-9]{9}$/;
+const GSTIN_REGEX = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[A-Z0-9]{1}Z[A-Z0-9]{1}$/;
+
 function generateOTP() {
   return Math.floor(100000 + Math.random() * 900000).toString();
 }
+
+function cleanString(value, maxLength = 255) {
+  if (value === undefined || value === null) return '';
+  return String(value).trim().slice(0, maxLength);
+}
+
+function normalizeEmail(value) {
+  return cleanString(value, 255).toLowerCase();
+}
+
+function normalizePhone(value) {
+  return cleanString(value, 20).replace(/\D/g, '').slice(-10);
+}
+
+function clientIp(req) {
+  return (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.ip || req.socket.remoteAddress || 'unknown';
+}
+
+function createRateLimiter(options) {
+  const hits = new Map();
+  const windowMs = options.windowMs;
+  const max = options.max;
+  const message = options.message || 'Too many requests. Please try again later.';
+
+  return function rateLimit(req, res, next) {
+    const now = Date.now();
+    const key = clientIp(req) + ':' + req.method + ':' + req.path;
+    const entry = hits.get(key) || { count: 0, resetAt: now + windowMs };
+    if (entry.resetAt <= now) {
+      entry.count = 0;
+      entry.resetAt = now + windowMs;
+    }
+    entry.count += 1;
+    hits.set(key, entry);
+
+    if (hits.size > 5000) {
+      for (const [k, v] of hits.entries()) {
+        if (v.resetAt <= now) hits.delete(k);
+      }
+    }
+
+    if (entry.count > max) {
+      const retryAfter = Math.max(1, Math.ceil((entry.resetAt - now) / 1000));
+      res.setHeader('Retry-After', String(retryAfter));
+      return res.status(429).json({ error: message });
+    }
+    next();
+  };
+}
+
+const authRateLimit = createRateLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: 40,
+  message: 'Too many authentication attempts. Please wait a bit and try again.'
+});
+const otpRateLimit = createRateLimiter({
+  windowMs: 10 * 60 * 1000,
+  max: 8,
+  message: 'Too many OTP requests. Please wait before requesting another code.'
+});
+const lookupRateLimit = createRateLimiter({
+  windowMs: 60 * 1000,
+  max: 20,
+  message: 'Too many lookup requests. Please slow down.'
+});
 
 function signToken(user) {
   return jwt.sign({ id: user.id, email: user.email, name: user.name, role: user.role || 'user' }, JWT_SECRET, { expiresIn: '7d' });
@@ -58,6 +156,42 @@ function safeUser(u) {
   delete copy.password_hash;
   delete copy._id;
   return copy;
+}
+
+async function adjustProductStock(userId, items, multiplier) {
+  if (!items || !items.length || !multiplier) return;
+  const user = await users.findOne({ id: userId });
+  const itemSettings = user && user.item_settings ? user.item_settings : {};
+  if (!itemSettings.stock) return;
+
+  for (const item of items) {
+    const name = cleanString(item.name, 255);
+    const qty = Number(item.qty) || 0;
+    if (!name || !qty) continue;
+
+    const product = await products.findOne({ user_id: userId, name });
+    const delta = qty * multiplier;
+    if (product) {
+      const nextQty = (Number(product.stock_quantity) || 0) + delta;
+      await products.update({ id: product.id, user_id: userId }, {
+        $set: { stock_quantity: Math.round(nextQty * 100) / 100, updated_at: new Date() }
+      });
+    } else {
+      await products.insert({
+        user_id: userId,
+        name,
+        hsn: cleanString(item.hsn, 20),
+        size: cleanString(item.size, 50),
+        mrp: Number(item.mrp) || 0,
+        rate: Number(item.rate) || 0,
+        gst: Number(item.gst) || 0,
+        unit: cleanString(item.unit, 20) || 'Pcs',
+        stock_quantity: Math.round(delta * 100) / 100,
+        low_stock_threshold: Number(itemSettings.low_stock_threshold) || 0,
+        updated_at: new Date()
+      });
+    }
+  }
 }
 
 // Auth middleware
@@ -80,15 +214,55 @@ function adminAuth(req, res, next) {
   next();
 }
 
+function validateProductionConfig() {
+  if (!IS_PRODUCTION) return;
+  if (!process.env.JWT_SECRET || JWT_SECRET === DEFAULT_JWT_SECRET || JWT_SECRET.length < 32) {
+    throw new Error('Set JWT_SECRET to a unique 32+ character value before running in production.');
+  }
+  if (!process.env.DATABASE_URL) {
+    console.warn('[CONFIG] DATABASE_URL is not set; production is using the local PostgreSQL fallback.');
+  }
+  if (!HAS_EMAIL_TRANSPORT) {
+    console.warn('[CONFIG] SMTP is incomplete; email OTP delivery is disabled in production.');
+  }
+  if (!HAS_SMS_TRANSPORT) {
+    console.warn('[CONFIG] Twilio is incomplete; phone OTP delivery is disabled in production.');
+  }
+}
+
+app.get('/api/health', async (req, res) => {
+  try {
+    await pool.query('SELECT 1');
+    res.json({
+      status: 'ok',
+      database: 'ok',
+      uptime_seconds: Math.round(process.uptime()),
+      started_at: STARTED_AT.toISOString(),
+      environment: IS_PRODUCTION ? 'production' : 'development'
+    });
+  } catch (e) {
+    res.status(503).json({
+      status: 'degraded',
+      database: 'unavailable',
+      error: 'Database connection failed'
+    });
+  }
+});
+
 // ─── AUTH ROUTES ─────────────────────────────────────────────
 
 // Register
-app.post('/api/auth/register', async (req, res) => {
+app.post('/api/auth/register', authRateLimit, async (req, res) => {
   try {
-    const { name, email, phone, password } = req.body;
-    if (!name || !email || !password) return res.status(400).json({ error: 'Name, email and password are required' });
+    const name = cleanString(req.body.name, 120);
+    const emailLower = normalizeEmail(req.body.email);
+    const phone = req.body.phone ? normalizePhone(req.body.phone) : '';
+    const password = req.body.password || '';
+    if (!name || !emailLower || !password) return res.status(400).json({ error: 'Name, email and password are required' });
+    if (!EMAIL_REGEX.test(emailLower)) return res.status(400).json({ error: 'Enter a valid email address' });
+    if (phone && !MOBILE_REGEX.test(phone)) return res.status(400).json({ error: 'Enter a valid 10-digit Indian mobile number' });
+    if (password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
 
-    const emailLower = email.toLowerCase();
     const existing = await users.findOne({ email: emailLower });
     if (existing) return res.status(409).json({ error: 'An account with this email already exists' });
 
@@ -111,13 +285,13 @@ app.post('/api/auth/register', async (req, res) => {
     // Send email OTP
     const otp = generateOTP();
     await otps.insert({ target: emailLower, type: 'email', otp, expires_at: new Date(Date.now() + 10 * 60000), used: false });
-    console.log(`[DEV] Email OTP for ${emailLower}: ${otp}`);
+    if (CAN_RETURN_DEV_OTP) console.log(`[DEV] Email OTP for ${emailLower}: ${otp}`);
 
-    if (!IS_DEV) {
+    if (HAS_EMAIL_TRANSPORT) {
       try {
         const t = await getTransporter();
         await t.sendMail({
-          from: process.env.SMTP_FROM || 'noreply@rupiya.in', to: email,
+          from: process.env.SMTP_FROM || 'noreply@rupiya.in', to: emailLower,
           subject: 'Rupiya - Verify your email',
           html: `<h2>Welcome to Rupiya!</h2><p>Your OTP: <strong>${otp}</strong></p><p>Valid for 10 minutes.</p>`
         });
@@ -125,7 +299,7 @@ app.post('/api/auth/register', async (req, res) => {
     }
 
     const token = signToken(user);
-    res.json({ token, user: safeUser(user), otp: IS_DEV ? otp : undefined, message: 'Account created!' });
+    res.json({ token, user: safeUser(user), otp: CAN_RETURN_DEV_OTP ? otp : undefined, message: 'Account created!' });
   } catch (e) {
     console.error(e);
     if (e.code === '23505' || e.errorType === 'uniqueViolated') return res.status(409).json({ error: 'Account already exists with this email or phone' });
@@ -134,13 +308,14 @@ app.post('/api/auth/register', async (req, res) => {
 });
 
 // Login
-app.post('/api/auth/login', async (req, res) => {
+app.post('/api/auth/login', authRateLimit, async (req, res) => {
   try {
-    const { identifier, password } = req.body;
+    const identifierRaw = cleanString(req.body.identifier, 255);
+    const password = req.body.password || '';
+    const identifier = identifierRaw.includes('@') ? normalizeEmail(identifierRaw) : normalizePhone(identifierRaw);
     if (!identifier || !password) return res.status(400).json({ error: 'Email/phone and password are required' });
 
-    const idLower = identifier.toLowerCase();
-    const user = await users.findOne({ $or: [{ email: idLower }, { phone: identifier }] });
+    const user = await users.findOne({ $or: [{ email: identifier }, { phone: identifier }] });
     if (!user) return res.status(401).json({ error: 'No account found with this email/phone' });
     if (!user.password_hash || !bcrypt.compareSync(password, user.password_hash)) {
       return res.status(401).json({ error: 'Incorrect password' });
@@ -155,16 +330,26 @@ app.post('/api/auth/login', async (req, res) => {
 });
 
 // Send OTP
-app.post('/api/auth/send-otp', async (req, res) => {
+app.post('/api/auth/send-otp', otpRateLimit, async (req, res) => {
   try {
-    const { target, type } = req.body;
+    const type = cleanString(req.body.type, 20);
+    const target = type === 'phone' ? normalizePhone(req.body.target) : normalizeEmail(req.body.target);
     if (!target || !type) return res.status(400).json({ error: 'Target and type are required' });
+    if (!['email', 'phone'].includes(type)) return res.status(400).json({ error: 'OTP type must be email or phone' });
+    if (type === 'email' && !EMAIL_REGEX.test(target)) return res.status(400).json({ error: 'Enter a valid email address' });
+    if (type === 'phone' && !MOBILE_REGEX.test(target)) return res.status(400).json({ error: 'Enter a valid 10-digit Indian mobile number' });
+    if (IS_PRODUCTION && type === 'email' && !HAS_EMAIL_TRANSPORT) {
+      return res.status(503).json({ error: 'Email OTP delivery is not configured yet' });
+    }
+    if (IS_PRODUCTION && type === 'phone' && !HAS_SMS_TRANSPORT) {
+      return res.status(503).json({ error: 'Phone OTP delivery is not configured yet' });
+    }
 
     const otp = generateOTP();
     await otps.insert({ target, type, otp, expires_at: new Date(Date.now() + 10 * 60000), used: false });
-    console.log(`[DEV] ${type.toUpperCase()} OTP for ${target}: ${otp}`);
+    if (CAN_RETURN_DEV_OTP) console.log(`[DEV] ${type.toUpperCase()} OTP for ${target}: ${otp}`);
 
-    if (type === 'email' && !IS_DEV) {
+    if (type === 'email' && HAS_EMAIL_TRANSPORT) {
       try {
         const t = await getTransporter();
         await t.sendMail({
@@ -172,17 +357,23 @@ app.post('/api/auth/send-otp', async (req, res) => {
           subject: 'Rupiya - Your OTP',
           html: `<p>Your OTP: <strong>${otp}</strong></p><p>Valid for 10 minutes.</p>`
         });
-      } catch (e) { console.error('Email send failed:', e.message); }
+      } catch (e) {
+        console.error('Email send failed:', e.message);
+        if (IS_PRODUCTION) return res.status(502).json({ error: 'Email OTP delivery failed. Please try again.' });
+      }
     }
 
-    if (type === 'phone' && process.env.TWILIO_SID) {
+    if (type === 'phone' && HAS_SMS_TRANSPORT) {
       try {
         const twilio = require('twilio')(process.env.TWILIO_SID, process.env.TWILIO_AUTH_TOKEN);
         await twilio.messages.create({ body: `Your Rupiya OTP: ${otp}`, from: process.env.TWILIO_PHONE, to: `+91${target}` });
-      } catch (e) { console.error('SMS send failed:', e.message); }
+      } catch (e) {
+        console.error('SMS send failed:', e.message);
+        if (IS_PRODUCTION) return res.status(502).json({ error: 'SMS OTP delivery failed. Please try again.' });
+      }
     }
 
-    res.json({ message: `OTP sent to ${target}`, otp: IS_DEV ? otp : undefined });
+    res.json({ message: `OTP sent to ${target}`, otp: CAN_RETURN_DEV_OTP ? otp : undefined });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'Failed to send OTP' });
@@ -190,10 +381,14 @@ app.post('/api/auth/send-otp', async (req, res) => {
 });
 
 // Verify OTP
-app.post('/api/auth/verify-otp', async (req, res) => {
+app.post('/api/auth/verify-otp', authRateLimit, async (req, res) => {
   try {
-    const { target, type, otp } = req.body;
+    const type = cleanString(req.body.type, 20);
+    const target = type === 'phone' ? normalizePhone(req.body.target) : normalizeEmail(req.body.target);
+    const otp = cleanString(req.body.otp, 10);
     if (!target || !type || !otp) return res.status(400).json({ error: 'Target, type and OTP are required' });
+    if (!['email', 'phone'].includes(type)) return res.status(400).json({ error: 'OTP type must be email or phone' });
+    if (!/^[0-9]{6}$/.test(otp)) return res.status(400).json({ error: 'Enter a valid 6-digit OTP' });
 
     const record = await otps.findOne({
       target, type, otp, used: false,
@@ -264,9 +459,13 @@ app.put('/api/auth/profile', auth, async (req, res) => {
 app.get('/api/parties', auth, async (req, res) => {
   try {
     const q = (req.query.q || '').trim();
+    const gstin = (req.query.gstin || '').trim().toUpperCase();
     const { pool } = require('./database');
     let sql, params;
-    if (q) {
+    if (gstin) {
+      sql = `SELECT * FROM parties WHERE user_id = $1 AND UPPER(gstin) = $2 ORDER BY updated_at DESC LIMIT 1`;
+      params = [req.user.id, gstin];
+    } else if (q) {
       sql = `SELECT * FROM parties WHERE user_id = $1 AND name ILIKE $2 ORDER BY updated_at DESC LIMIT 20`;
       params = [req.user.id, '%' + q + '%'];
     } else {
@@ -372,10 +571,9 @@ function httpGet(url, timeoutMs = 8000) {
   });
 }
 
-app.get('/api/gstin-lookup/:gstin', auth, async (req, res) => {
+app.get('/api/gstin-lookup/:gstin', auth, lookupRateLimit, async (req, res) => {
   const gstin = (req.params.gstin || '').toUpperCase().trim();
-  const gstinRegex = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[A-Z0-9]{1}Z[A-Z0-9]{1}$/;
-  if (!gstinRegex.test(gstin)) {
+  if (!GSTIN_REGEX.test(gstin)) {
     return res.status(400).json({ error: 'Invalid GSTIN format' });
   }
 
@@ -385,7 +583,7 @@ app.get('/api/gstin-lookup/:gstin', auth, async (req, res) => {
 
   // Check if user has a GSTIN API key configured (fallback to default)
   const user = await users.findOne({ id: req.user.id });
-  const apiKey = (user && user.gstin_api_key ? user.gstin_api_key.trim() : '') || '73bab7f23f2742306a1dccbd2d8874ec';
+  const apiKey = (user && user.gstin_api_key ? user.gstin_api_key.trim() : '') || (process.env.GSTIN_API_KEY || '').trim();
 
   if (apiKey) {
     // Try gstincheck.co.in with user's API key
@@ -709,6 +907,12 @@ app.post('/api/invoices', auth, async (req, res) => {
       console.error('Auto-save error (non-critical):', autoErr);
     }
 
+    try {
+      await adjustProductStock(req.user.id, items, -1);
+    } catch (stockErr) {
+      console.error('Stock adjustment error (non-critical):', stockErr);
+    }
+
     res.json({ invoice: inv, message: 'Invoice created!' });
   } catch (e) {
     console.error(e);
@@ -735,8 +939,15 @@ app.patch('/api/invoices/:id', auth, async (req, res) => {
 
 // Delete
 app.delete('/api/invoices/:id', auth, async (req, res) => {
+  const inv = await invoices.findOne({ id: req.params.id, user_id: req.user.id });
+  if (!inv) return res.status(404).json({ error: 'Invoice not found' });
   const removed = await invoices.remove({ id: req.params.id, user_id: req.user.id });
   if (removed === 0) return res.status(404).json({ error: 'Invoice not found' });
+  try {
+    await adjustProductStock(req.user.id, inv.items || [], 1);
+  } catch (stockErr) {
+    console.error('Stock adjustment error (non-critical):', stockErr);
+  }
   res.json({ message: 'Invoice deleted' });
 });
 
@@ -815,25 +1026,11 @@ app.post('/api/sale-docs', auth, async (req, res) => {
       created_at: now
     });
 
-    // Stock adjustment for sale returns: increase stock quantities for returned items
-    if (doc_type === 'sale_return' && items && items.length) {
+    if (doc_type === 'sale_return') {
       try {
-        const user = await users.findOne({ id: req.user.id });
-        const itemSettings = user && user.item_settings ? user.item_settings : {};
-        if (itemSettings.stock) {
-          for (const item of items) {
-            if (item.name && item.qty) {
-              const product = await products.findOne({ user_id: req.user.id, name: item.name });
-              if (product) {
-                const newQty = (product.stock_quantity || 0) + parseFloat(item.qty);
-                await products.update({ id: product.id }, { $set: { stock_quantity: newQty } });
-              }
-            }
-          }
-        }
+        await adjustProductStock(req.user.id, items, 1);
       } catch (stockErr) {
-        console.error('Stock adjustment error:', stockErr);
-        // Don't fail the sale return creation if stock adjustment fails
+        console.error('Stock adjustment error (non-critical):', stockErr);
       }
     }
 
@@ -891,8 +1088,17 @@ app.put('/api/sale-docs/:id', auth, async (req, res) => {
 // Delete sale document
 app.delete('/api/sale-docs/:id', auth, async (req, res) => {
   try {
+    const doc = await saleDocuments.findOne({ id: req.params.id, user_id: req.user.id });
+    if (!doc) return res.status(404).json({ error: 'Document not found' });
     const removed = await saleDocuments.remove({ id: req.params.id, user_id: req.user.id });
     if (removed === 0) return res.status(404).json({ error: 'Document not found' });
+    if (doc.doc_type === 'sale_return') {
+      try {
+        await adjustProductStock(req.user.id, doc.items || [], -1);
+      } catch (stockErr) {
+        console.error('Stock adjustment error (non-critical):', stockErr);
+      }
+    }
     res.json({ message: 'Document deleted' });
   } catch (e) {
     console.error(e);
@@ -918,7 +1124,7 @@ app.post('/api/sale-docs/:id/convert', auth, async (req, res) => {
     const inv = await invoices.insert({
       user_id: req.user.id, invoice_number,
       invoice_date: now.toISOString().slice(0, 10),
-      due_date: doc.due_date || '',
+      due_date: doc.due_date ? String(doc.due_date).slice(0, 10) : '',
       customer_name: doc.customer_name,
       customer_phone: doc.customer_phone || '',
       customer_email: doc.customer_email || '',
@@ -938,6 +1144,12 @@ app.post('/api/sale-docs/:id/convert', auth, async (req, res) => {
     await saleDocuments.update({ id: doc.id }, {
       $set: { status: 'converted', reference_id: inv.id }
     });
+
+    try {
+      await adjustProductStock(req.user.id, doc.items || [], -1);
+    } catch (stockErr) {
+      console.error('Stock adjustment error (non-critical):', stockErr);
+    }
 
     res.json({ invoice: inv, message: 'Converted to Invoice ' + invoice_number + '!' });
   } catch (e) {
@@ -1126,6 +1338,15 @@ app.post('/api/purchase-docs', auth, async (req, res) => {
       status: status || 'unpaid', reference_id: reference_id || null,
       reference_number: reference_number || '', notes: notes || '', created_at: now
     });
+
+    if (doc_type === 'purchase_bill' || doc_type === 'purchase_return') {
+      try {
+        await adjustProductStock(req.user.id, items || [], doc_type === 'purchase_bill' ? 1 : -1);
+      } catch (stockErr) {
+        console.error('Stock adjustment error (non-critical):', stockErr);
+      }
+    }
+
     res.json({ document: doc, message: PURCHASE_TITLES[doc_type] + ' ' + doc_number + ' created!' });
   } catch (e) { console.error(e); res.status(500).json({ error: 'Failed to create document' }); }
 });
@@ -1148,8 +1369,17 @@ app.put('/api/purchase-docs/:id', auth, async (req, res) => {
 // Delete
 app.delete('/api/purchase-docs/:id', auth, async (req, res) => {
   try {
+    const doc = await purchaseDocuments.findOne({ id: req.params.id, user_id: req.user.id });
+    if (!doc) return res.status(404).json({ error: 'Document not found' });
     const removed = await purchaseDocuments.remove({ id: req.params.id, user_id: req.user.id });
     if (removed === 0) return res.status(404).json({ error: 'Document not found' });
+    if (doc.doc_type === 'purchase_bill' || doc.doc_type === 'purchase_return') {
+      try {
+        await adjustProductStock(req.user.id, doc.items || [], doc.doc_type === 'purchase_bill' ? -1 : 1);
+      } catch (stockErr) {
+        console.error('Stock adjustment error (non-critical):', stockErr);
+      }
+    }
     res.json({ message: 'Document deleted' });
   } catch (e) { console.error(e); res.status(500).json({ error: 'Failed to delete document' }); }
 });
@@ -1561,11 +1791,18 @@ app.get('/', (req, res) => {
 });
 
 // ─── Start ───────────────────────────────────────────────────
+try {
+  validateProductionConfig();
+} catch (err) {
+  console.error('[CONFIG] ' + err.message);
+  process.exit(1);
+}
+
 initDB().then(() => {
   app.listen(PORT, () => {
     console.log(`\n  Rupiya server running at http://localhost:${PORT}`);
     console.log(`  Dashboard: http://localhost:${PORT}/dashboard`);
-    if (IS_DEV) console.log(`  [DEV MODE] OTPs will be logged here & returned in API responses\n`);
+    if (CAN_RETURN_DEV_OTP) console.log(`  [DEV MODE] OTPs will be logged here & returned in API responses\n`);
   });
 }).catch(err => {
   console.error('Failed to initialize database:', err.message);

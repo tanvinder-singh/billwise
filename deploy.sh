@@ -10,10 +10,11 @@
 set -e
 
 # ─── Configuration (must match setup.sh) ─────────────────
-EC2_IP="107.22.33.194"
+EC2_HOST="ec2-52-201-28-64.compute-1.amazonaws.com"
+EC2_IP="52.201.28.64"
 PEM_FILE="$HOME/Downloads/rupiya.pem"
-EC2_USER="ubuntu"
-APP_DIR="/home/ubuntu/rupiya"
+EC2_USER="ec2-user"
+APP_DIR="/home/ec2-user/rupiya"
 # ─────────────────────────────────────────────────────────
 
 RED='\033[0;31m'
@@ -58,7 +59,7 @@ echo -e "  ${GREEN}Pushed.${NC}"
 echo ""
 echo -e "${YELLOW}[2/4] Pulling latest code on EC2...${NC}"
 
-ssh -i "$PEM_FILE" -o StrictHostKeyChecking=no "$EC2_USER@$EC2_IP" << REMOTE_PULL
+ssh -i "$PEM_FILE" -o StrictHostKeyChecking=no "$EC2_USER@$EC2_HOST" << REMOTE_PULL
   set -e
   cd $APP_DIR
   git stash 2>/dev/null || true
@@ -72,7 +73,7 @@ echo -e "  ${GREEN}Code updated.${NC}"
 echo ""
 echo -e "${YELLOW}[3/4] Restarting app...${NC}"
 
-ssh -i "$PEM_FILE" -o StrictHostKeyChecking=no "$EC2_USER@$EC2_IP" << REMOTE_RESTART
+ssh -i "$PEM_FILE" -o StrictHostKeyChecking=no "$EC2_USER@$EC2_HOST" << REMOTE_RESTART
   set -e
   cd $APP_DIR
   pm2 restart rupiya
@@ -87,13 +88,13 @@ echo ""
 echo -e "${YELLOW}[4/4] Health check...${NC}"
 sleep 2
 
-HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "http://$EC2_IP" --max-time 10 2>/dev/null || echo "000")
+HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "http://$EC2_IP/api/health" --max-time 10 2>/dev/null || echo "000")
 
 if [ "$HTTP_CODE" = "200" ]; then
-  echo -e "  ${GREEN}App is live at http://$EC2_IP (HTTP $HTTP_CODE)${NC}"
+  echo -e "  ${GREEN}App health check passed at http://$EC2_IP/api/health (HTTP $HTTP_CODE)${NC}"
 else
-  echo -e "  ${RED}Warning: HTTP $HTTP_CODE from http://$EC2_IP${NC}"
-  echo "  Check logs: ssh -i $PEM_FILE $EC2_USER@$EC2_IP 'pm2 logs billwise --lines 20'"
+  echo -e "  ${RED}Warning: HTTP $HTTP_CODE from http://$EC2_IP/api/health${NC}"
+  echo "  Check logs: ssh -i $PEM_FILE $EC2_USER@$EC2_HOST 'pm2 logs rupiya --lines 20'"
 fi
 
 echo ""

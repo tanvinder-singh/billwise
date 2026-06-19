@@ -15,10 +15,11 @@
 set -e
 
 # ─── Configuration (edit these) ──────────────────────────
-EC2_IP="107.22.33.194"
+EC2_HOST="ec2-52-201-28-64.compute-1.amazonaws.com"
+EC2_IP="52.201.28.64"
 PEM_FILE="$HOME/Downloads/rupiya.pem"
-EC2_USER="ubuntu"
-APP_DIR="/home/ubuntu/rupiya"
+EC2_USER="ec2-user"
+APP_DIR="/home/ec2-user/rupiya"
 GITHUB_REPO="https://github.com/tanvinder-singh/billwise.git"
 BRANCH="main"
 DB_NAME="rupiya_db"
@@ -75,32 +76,37 @@ fi
 echo ""
 echo -e "${YELLOW}[1/7] Installing system packages on EC2...${NC}"
 
-ssh -i "$PEM_FILE" -o StrictHostKeyChecking=no "$EC2_USER@$EC2_IP" << 'REMOTE_PACKAGES'
+ssh -i "$PEM_FILE" -o StrictHostKeyChecking=no "$EC2_USER@$EC2_HOST" << 'REMOTE_PACKAGES'
   set -e
-  echo "  Updating apt..."
-  sudo apt-get update -qq
+  echo "  Updating packages (Amazon Linux)..."
+  sudo dnf update -y -q
 
   # Node.js 20 via NodeSource
   if ! command -v node &>/dev/null || [[ "$(node -v)" != v20* ]]; then
     echo "  Installing Node.js 20..."
-    curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash - >/dev/null 2>&1
-    sudo apt-get install -y -qq nodejs
+    curl -fsSL https://rpm.nodesource.com/setup_20.x | sudo bash - >/dev/null 2>&1
+    sudo dnf install -y -q nodejs
   else
     echo "  Node.js $(node -v) already installed."
   fi
 
-  # PostgreSQL
+  # PostgreSQL 15
   if ! command -v psql &>/dev/null; then
     echo "  Installing PostgreSQL..."
-    sudo apt-get install -y -qq postgresql postgresql-contrib
+    sudo dnf install -y -q postgresql15 postgresql15-server
+    sudo postgresql-setup --initdb
+    sudo systemctl enable postgresql
+    sudo systemctl start postgresql
   else
     echo "  PostgreSQL already installed."
+    sudo systemctl enable postgresql 2>/dev/null || true
+    sudo systemctl start postgresql 2>/dev/null || true
   fi
 
   # Nginx
   if ! command -v nginx &>/dev/null; then
     echo "  Installing Nginx..."
-    sudo apt-get install -y -qq nginx
+    sudo dnf install -y -q nginx
   else
     echo "  Nginx already installed."
   fi
@@ -115,7 +121,7 @@ ssh -i "$PEM_FILE" -o StrictHostKeyChecking=no "$EC2_USER@$EC2_IP" << 'REMOTE_PA
 
   # Git
   if ! command -v git &>/dev/null; then
-    sudo apt-get install -y -qq git
+    sudo dnf install -y -q git
   fi
 
   echo "  Node: $(node -v) | npm: $(npm -v) | psql: $(psql --version | head -1)"
@@ -127,7 +133,7 @@ echo -e "  ${GREEN}Packages installed.${NC}"
 echo ""
 echo -e "${YELLOW}[2/7] Setting up PostgreSQL database...${NC}"
 
-ssh -i "$PEM_FILE" -o StrictHostKeyChecking=no "$EC2_USER@$EC2_IP" << REMOTE_DB
+ssh -i "$PEM_FILE" -o StrictHostKeyChecking=no "$EC2_USER@$EC2_HOST" << REMOTE_DB
   set -e
   sudo systemctl enable postgresql
   sudo systemctl start postgresql
@@ -156,7 +162,7 @@ echo -e "  ${GREEN}PostgreSQL configured.${NC}"
 echo ""
 echo -e "${YELLOW}[3/7] Cloning repository...${NC}"
 
-ssh -i "$PEM_FILE" -o StrictHostKeyChecking=no "$EC2_USER@$EC2_IP" << REMOTE_CLONE
+ssh -i "$PEM_FILE" -o StrictHostKeyChecking=no "$EC2_USER@$EC2_HOST" << REMOTE_CLONE
   set -e
   if [ -d "$APP_DIR/.git" ]; then
     echo "  Repo already exists. Pulling latest..."
@@ -181,11 +187,16 @@ echo -e "${YELLOW}[4/7] Creating .env configuration...${NC}"
 
 DATABASE_URL="postgresql://$DB_USER:$DB_PASS@localhost:5432/$DB_NAME"
 
-ENV_CONTENT="PORT=3000
+ENV_CONTENT="NODE_ENV=production
+PORT=3000
 JWT_SECRET=$JWT_SECRET
+CORS_ORIGIN=
 
 # PostgreSQL
 DATABASE_URL=$DATABASE_URL
+
+# Optional GSTIN lookup API key
+GSTIN_API_KEY=
 
 # Twilio SMS OTP
 TWILIO_SID=$TWILIO_SID
@@ -200,7 +211,7 @@ SMTP_USER=$SMTP_USER
 SMTP_PASS=$SMTP_PASS
 SMTP_FROM=$SMTP_FROM"
 
-ssh -i "$PEM_FILE" -o StrictHostKeyChecking=no "$EC2_USER@$EC2_IP" "cat > $APP_DIR/.env << 'INNEREOF'
+ssh -i "$PEM_FILE" -o StrictHostKeyChecking=no "$EC2_USER@$EC2_HOST" "cat > $APP_DIR/.env << 'INNEREOF'
 $ENV_CONTENT
 INNEREOF
 echo '  .env created at $APP_DIR/.env'"
@@ -211,7 +222,7 @@ echo -e "  ${GREEN}.env configured.${NC}"
 echo ""
 echo -e "${YELLOW}[5/7] Starting app with PM2...${NC}"
 
-ssh -i "$PEM_FILE" -o StrictHostKeyChecking=no "$EC2_USER@$EC2_IP" << REMOTE_PM2
+ssh -i "$PEM_FILE" -o StrictHostKeyChecking=no "$EC2_USER@$EC2_HOST" << REMOTE_PM2
   set -e
   cd $APP_DIR
 
@@ -223,7 +234,7 @@ ssh -i "$PEM_FILE" -o StrictHostKeyChecking=no "$EC2_USER@$EC2_IP" << REMOTE_PM2
   pm2 save
 
   # Enable PM2 startup on reboot
-  sudo env PATH=\$PATH:/usr/bin pm2 startup systemd -u ubuntu --hp /home/ubuntu 2>/dev/null || true
+  sudo env PATH=\$PATH:/usr/bin pm2 startup systemd -u ec2-user --hp /home/ec2-user 2>/dev/null || true
   pm2 save
 
   sleep 2
@@ -236,9 +247,9 @@ echo -e "  ${GREEN}App started with PM2.${NC}"
 echo ""
 echo -e "${YELLOW}[6/7] Configuring Nginx reverse proxy...${NC}"
 
-ssh -i "$PEM_FILE" -o StrictHostKeyChecking=no "$EC2_USER@$EC2_IP" << 'REMOTE_NGINX'
+ssh -i "$PEM_FILE" -o StrictHostKeyChecking=no "$EC2_USER@$EC2_HOST" << 'REMOTE_NGINX'
   set -e
-  sudo tee /etc/nginx/sites-available/rupiya > /dev/null << 'NGINXCONF'
+  sudo tee /etc/nginx/conf.d/rupiya.conf > /dev/null << 'NGINXCONF'
 server {
     listen 80;
     server_name _;
@@ -257,9 +268,6 @@ server {
     }
 }
 NGINXCONF
-
-  sudo ln -sf /etc/nginx/sites-available/rupiya /etc/nginx/sites-enabled/rupiya
-  sudo rm -f /etc/nginx/sites-enabled/default
 
   sudo nginx -t
   sudo systemctl enable nginx
@@ -280,7 +288,7 @@ if [ "$HTTP_CODE" = "200" ]; then
   echo -e "  ${GREEN}App is live at http://$EC2_IP (HTTP $HTTP_CODE)${NC}"
 else
   echo -e "  ${RED}Warning: Got HTTP $HTTP_CODE — checking PM2 logs...${NC}"
-  ssh -i "$PEM_FILE" -o StrictHostKeyChecking=no "$EC2_USER@$EC2_IP" "pm2 logs rupiya --lines 15 --nostream" 2>/dev/null || true
+  ssh -i "$PEM_FILE" -o StrictHostKeyChecking=no "$EC2_USER@$EC2_HOST" "pm2 logs rupiya --lines 15 --nostream" 2>/dev/null || true
 fi
 
 echo ""
@@ -289,8 +297,8 @@ echo -e "${CYAN}   Setup Complete!${NC}"
 echo -e "${CYAN}══════════════════════════════════════════${NC}"
 echo ""
 echo -e "  App URL:       ${GREEN}http://$EC2_IP${NC}"
-echo -e "  SSH:           ssh -i $PEM_FILE $EC2_USER@$EC2_IP"
-echo -e "  App logs:      ssh -i $PEM_FILE $EC2_USER@$EC2_IP 'pm2 logs rupiya'"
+echo -e "  SSH:           ssh -i $PEM_FILE $EC2_USER@$EC2_HOST"
+echo -e "  App logs:      ssh -i $PEM_FILE $EC2_USER@$EC2_HOST 'pm2 logs rupiya'"
 echo -e "  DB password:   $DB_PASS"
 echo ""
 echo -e "  ${YELLOW}IMPORTANT: Save the DB password above! It's in the .env on the server.${NC}"

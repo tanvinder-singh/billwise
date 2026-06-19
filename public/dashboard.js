@@ -149,6 +149,98 @@
       return '<option value="' + u + '"' + (u === (selected || 'Pcs') ? ' selected' : '') + '>' + u + '</option>';
     }).join('');
   }
+
+  // Auto-fill customer fields when a full GSTIN is entered (saved party first, then GST portal lookup)
+  function bindCustomerGstinAutofill(opts) {
+    var gstinEl = document.getElementById(opts.gstinId);
+    if (!gstinEl) return;
+    var statusEl = opts.statusId ? document.getElementById(opts.statusId) : null;
+    var gstinTimer = null;
+
+    function setSelectValue(selectId, value) {
+      if (!selectId || !value) return;
+      var sel = document.getElementById(selectId);
+      if (!sel) return;
+      for (var i = 0; i < sel.options.length; i++) {
+        if (sel.options[i].value === value) {
+          sel.selectedIndex = i;
+          sel.dispatchEvent(new Event('change'));
+          break;
+        }
+      }
+    }
+
+    function fillFromParty(party) {
+      if (opts.nameId && party.name) document.getElementById(opts.nameId).value = party.name;
+      if (opts.phoneId && party.phone) document.getElementById(opts.phoneId).value = party.phone;
+      if (opts.emailId && party.email) document.getElementById(opts.emailId).value = party.email;
+      if (opts.addressId) {
+        document.getElementById(opts.addressId).value = party.address || party.billing_address || '';
+      }
+      setSelectValue(opts.stateId, party.state);
+      setSelectValue(opts.posStateId, party.state);
+      if (opts.onPartyFound) opts.onPartyFound(party);
+    }
+
+    function fillFromGstinLookup(res) {
+      var name = res.trade_name || res.legal_name;
+      if (opts.nameId && name) {
+        var nameEl = document.getElementById(opts.nameId);
+        if (!nameEl.value.trim()) nameEl.value = name;
+      }
+      if (opts.addressId && res.address) document.getElementById(opts.addressId).value = res.address;
+      setSelectValue(opts.stateId, res.state);
+      setSelectValue(opts.posStateId, res.state);
+    }
+
+    function setStatus(kind, text) {
+      if (!statusEl) return;
+      statusEl.className = 'gstin-status' + (kind ? ' ' + kind : '');
+      statusEl.innerHTML = text || '';
+    }
+
+    gstinEl.addEventListener('input', function () {
+      var val = gstinEl.value.replace(/\s/g, '').toUpperCase();
+      gstinEl.value = val;
+      clearTimeout(gstinTimer);
+      setStatus('', '');
+      if (val.length !== 15) {
+        if (val.length > 0) setStatus('typing', val.length + '/15');
+        return;
+      }
+      setStatus('loading', '<span class="gstin-spinner"></span>');
+      gstinTimer = setTimeout(function () {
+        api('GET', '/api/parties?gstin=' + encodeURIComponent(val)).then(function (partyRes) {
+          var savedParty = (partyRes.parties || [])[0];
+          if (savedParty) {
+            fillFromParty(savedParty);
+            setStatus('valid', '\u2713');
+            showToast('Customer details loaded from saved party', 'success');
+            return null;
+          }
+          return api('GET', '/api/gstin-lookup/' + val);
+        }).then(function (res) {
+          if (!res) return;
+          if (res.error) {
+            setStatus('invalid', '\u2717');
+            showToast(res.error, 'error');
+            return;
+          }
+          fillFromGstinLookup(res);
+          setStatus('valid', '\u2713');
+          var msg = 'GSTIN verified!';
+          if (res.address) msg += ' Address auto-filled.';
+          else if (res.needs_api_key) msg += ' Add a GSTIN API key in Settings for full address lookup.';
+          else if (res.state) msg += ' State detected.';
+          showToast(msg, res.needs_api_key ? 'warning' : 'success');
+        }).catch(function () {
+          setStatus('invalid', '\u2717');
+          showToast('GSTIN lookup failed', 'error');
+        });
+      }, 300);
+    });
+  }
+
   function numberToWords(num) {
     if (num === 0) return 'Zero';
     var a = ['','One','Two','Three','Four','Five','Six','Seven','Eight','Nine','Ten',
@@ -290,6 +382,14 @@
   function statCard(label, value, cls) {
     return '<div class="stat-card"><div class="stat-label">' + label + '</div><div class="stat-value ' + cls + '">' + value + '</div></div>';
   }
+  function actionCardHTML(kind, title, value, detail, buttonLabel, onclick) {
+    return '<div class="action-card action-' + kind + '">' +
+      '<div class="action-card-top"><div><div class="action-title">' + title + '</div>' +
+      '<div class="action-value">' + value + '</div></div><span class="action-dot"></span></div>' +
+      '<div class="action-detail">' + detail + '</div>' +
+      '<button type="button" class="btn btn-ghost btn-sm action-btn" onclick="' + onclick + '">' + buttonLabel + '</button>' +
+    '</div>';
+  }
   function themePreviewCard(id, name, color, desc, current) {
     var active = (current || 'classic') === id;
     return '<label class="theme-preview-item' + (active ? ' selected' : '') + '">' +
@@ -305,6 +405,40 @@
   function statusBadge(s) {
     var cls = s === 'paid' ? 'badge-paid' : s === 'partial' ? 'badge-partial' : 'badge-unpaid';
     return '<span class="badge ' + cls + '">' + s.charAt(0).toUpperCase() + s.slice(1) + '</span>';
+  }
+  function todayISO() {
+    var d = new Date();
+    d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+    return d.toISOString().slice(0, 10);
+  }
+  function invoiceDueAmount(inv) {
+    return Math.max(0, (Number(inv.total) || 0) - (Number(inv.amount_paid) || 0));
+  }
+  function normalizeWhatsAppPhone(phone) {
+    var digits = String(phone || '').replace(/\D/g, '');
+    if (digits.length >= 10) return digits.slice(-10);
+    return '';
+  }
+  function buildPaymentReminder(inv) {
+    var biz = (currentUser && (currentUser.business_name || currentUser.name)) || 'Rupiya';
+    var due = invoiceDueAmount(inv);
+    var parts = [
+      'Hello ' + (inv.customer_name || 'there') + ',',
+      'This is a payment reminder for invoice ' + (inv.invoice_number || '') + ' from ' + biz + '.',
+      'Balance due: ' + formatINR(due) + '.'
+    ];
+    if (inv.due_date) parts.push('Due date: ' + formatDateSlash(inv.due_date) + '.');
+    parts.push('Please share the payment update when convenient. Thank you.');
+    return parts.join('\n');
+  }
+  function openPaymentReminder(inv) {
+    var phone = normalizeWhatsAppPhone(inv.customer_phone);
+    if (!phone) {
+      showToast('Add a customer phone number before sending a reminder', 'error');
+      return;
+    }
+    var url = 'https://wa.me/91' + phone + '?text=' + encodeURIComponent(buildPaymentReminder(inv));
+    window.open(url, '_blank', 'noopener');
   }
 
   // ─── Autocomplete ────────────────────────────────────────────
@@ -429,22 +563,57 @@
   function renderOverview() {
     $pageTitle.textContent = 'Home';
     $content.innerHTML = '<p style="color:var(--text-muted)">Loading dashboard...</p>';
-    api('GET', '/api/invoices').then(function (data) {
-      var allInv = data.invoices || [];
+    Promise.all([
+      api('GET', '/api/invoices'),
+      api('GET', '/api/products?q='),
+      api('GET', '/api/purchase-docs/unpaid').catch(function () { return { documents: [] }; })
+    ]).then(function (res) {
+      var allInv = res[0].invoices || [];
+      var allItems = res[1].products || [];
+      var unpaidPurchases = res[2].documents || [];
       var recentInv = allInv.slice(0, 5);
 
       // Calculate receivable/payable
       var receivable = 0, receivableParties = {};
+      var today = todayISO();
+      var dueSoonLimit = new Date();
+      dueSoonLimit.setDate(dueSoonLimit.getDate() + 7);
+      dueSoonLimit.setMinutes(dueSoonLimit.getMinutes() - dueSoonLimit.getTimezoneOffset());
+      var dueSoonISO = dueSoonLimit.toISOString().slice(0, 10);
+      var overdueInvoices = [];
+      var dueSoonInvoices = [];
       allInv.forEach(function (inv) {
         if (inv.status !== 'paid') {
-          var due = (inv.total || 0) - (inv.amount_paid || 0);
+          var due = invoiceDueAmount(inv);
           if (due > 0) {
             receivable += due;
             receivableParties[inv.customer_name] = true;
+            if (inv.due_date && inv.due_date < today) overdueInvoices.push(inv);
+            else if (inv.due_date && inv.due_date <= dueSoonISO) dueSoonInvoices.push(inv);
           }
         }
       });
       var partyCount = Object.keys(receivableParties).length;
+      var payable = unpaidPurchases.reduce(function (s, bill) { return s + invoiceDueAmount(bill); }, 0);
+      var payableParties = {};
+      unpaidPurchases.forEach(function (bill) {
+        if (invoiceDueAmount(bill) > 0 && bill.supplier_name) payableParties[bill.supplier_name] = true;
+      });
+      var payablePartyCount = Object.keys(payableParties).length;
+      var overdueAmount = overdueInvoices.reduce(function (s, inv) { return s + invoiceDueAmount(inv); }, 0);
+      var dueSoonAmount = dueSoonInvoices.reduce(function (s, inv) { return s + invoiceDueAmount(inv); }, 0);
+
+      var itemSettings = (currentUser && currentUser.item_settings) || {};
+      var lowThreshold = itemSettings.low_stock_threshold || 10;
+      var lowStockItems = itemSettings.stock ? allItems.filter(function (item) {
+        var qty = Number(item.stock_quantity) || 0;
+        var threshold = Number(item.low_stock_threshold || lowThreshold) || 0;
+        return qty <= threshold;
+      }) : [];
+
+      var profileFields = ['business_name', 'gstin', 'address', 'state'];
+      var profileDone = profileFields.filter(function (field) { return currentUser && currentUser[field]; }).length;
+      var profileReadyPct = Math.round((profileDone / profileFields.length) * 100);
 
       // Sales data for current month
       var now = new Date();
@@ -486,10 +655,20 @@
         '<div class="summary-card payable">' +
           '<div class="summary-icon"><svg width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></svg></div>' +
           '<div><div class="summary-label">Total Payable</div>' +
-          '<div class="summary-amount">' + formatINR(0) + '</div>' +
-          '<div class="summary-detail">You don\'t have any payables</div></div>' +
+          '<div class="summary-amount">' + formatINR(payable) + '</div>' +
+          '<div class="summary-detail">' + (payable ? ('To ' + payablePartyCount + ' ' + (payablePartyCount === 1 ? 'Party' : 'Parties')) : 'No pending purchase bills') + '</div></div>' +
         '</div>' +
       '</div>';
+
+      html += '<div class="action-center">' +
+        '<div class="action-header"><div><h3>Action Center</h3><p>Priority work for today</p></div>' +
+        '<button type="button" class="btn btn-outline btn-sm" onclick="window.goTo(\'reports\')">Open Reports</button></div>' +
+        '<div class="action-grid">' +
+          actionCardHTML(overdueInvoices.length ? 'danger' : 'success', 'Overdue Receivables', overdueInvoices.length ? formatINR(overdueAmount) : 'Clear', overdueInvoices.length ? (overdueInvoices.length + ' invoice' + (overdueInvoices.length === 1 ? '' : 's') + ' past due') : 'No overdue customer payments', overdueInvoices.length ? 'Review Invoices' : 'All Good', 'window.goTo(\'invoices\')') +
+          actionCardHTML(dueSoonInvoices.length ? 'warning' : 'neutral', 'Due This Week', dueSoonInvoices.length ? formatINR(dueSoonAmount) : 'None', dueSoonInvoices.length ? (dueSoonInvoices.length + ' payment' + (dueSoonInvoices.length === 1 ? '' : 's') + ' coming up') : 'No near-term receivables', 'View Invoices', 'window.goTo(\'invoices\')') +
+          actionCardHTML(lowStockItems.length ? 'warning' : 'neutral', 'Stock Alerts', lowStockItems.length ? lowStockItems.length + ' item' + (lowStockItems.length === 1 ? '' : 's') : 'Off', itemSettings.stock ? (lowStockItems.length ? 'At or below low-stock threshold' : 'Inventory levels look healthy') : 'Enable stock tracking in item settings', itemSettings.stock ? 'Open Items' : 'Set Up Stock', itemSettings.stock ? 'window.goTo(\'items\')' : 'window.goTo(\'settings\')') +
+          actionCardHTML(profileReadyPct === 100 ? 'success' : 'warning', 'Invoice Profile', profileReadyPct + '% ready', profileReadyPct === 100 ? 'Business details are ready for invoices' : 'Add GSTIN, address, state, and business name', 'Open Settings', 'window.goTo(\'settings\')') +
+        '</div></div>';
 
       // Sales chart
       html += '<div class="dash-chart-card">' +
@@ -651,6 +830,9 @@
           (isPaid ? '' :
           '<button type="button" class="row-action-btn paid-btn" onclick="window.markInvPaid(\'' + invId + '\',' + (inv.total || 0) + ')" title="Mark as Paid">' +
             '<svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>' +
+          '</button>' +
+          '<button type="button" class="row-action-btn remind-btn" onclick="window.remindInv(\'' + invId + '\')" title="WhatsApp Reminder">' +
+            '<svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/></svg>' +
           '</button>') +
           '<button type="button" class="row-action-btn del-btn" onclick="window.deleteInv(\'' + invId + '\')" title="Delete Invoice">' +
             '<svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>' +
@@ -676,6 +858,12 @@
       if (currentPage === 'invoices') renderInvoiceList();
       else renderOverview();
     });
+  };
+  window.remindInv = function (id) {
+    api('GET', '/api/invoices/' + id).then(function (data) {
+      if (data.error) { showToast(data.error, 'error'); return; }
+      openPaymentReminder(data.invoice);
+    }).catch(function () { showToast('Failed to prepare reminder', 'error'); });
   };
 
   // ── Parties Page ──────────────────────────────────────────
@@ -1777,7 +1965,8 @@
       var selectedTheme = (u.invoice_theme || 'classic');
       var html = '<div class="no-print" style="margin-bottom:16px;display:flex;gap:12px;flex-wrap:wrap;align-items:center">' +
         '<button type="button" class="btn btn-secondary" onclick="window.print()">Print / PDF</button>' +
-        '<button type="button" class="btn btn-outline" id="markPaidBtn">Mark as Paid</button>' +
+        (balance > 0 ? '<button type="button" class="btn btn-outline" id="remindInvBtn">WhatsApp Reminder</button>' : '') +
+        (balance > 0 ? '<button type="button" class="btn btn-outline" id="markPaidBtn">Mark as Paid</button>' : '') +
         '<button type="button" class="btn btn-danger" id="deleteInvBtn">Delete</button>' +
         '<button type="button" class="btn btn-ghost" onclick="window.goTo(\'invoices\')">\u2190 Back</button></div>';
 
@@ -2017,12 +2206,21 @@
       $content.innerHTML = html;
 
       // Event listeners
-      document.getElementById('markPaidBtn').addEventListener('click', function () {
-        api('PATCH', '/api/invoices/' + id, { status: 'paid', amount_paid: inv.total }).then(function (d) {
-          showToast(d.message || 'Marked as paid', 'success');
-          renderInvoiceDetail(id);
+      var remindBtn = document.getElementById('remindInvBtn');
+      if (remindBtn) {
+        remindBtn.addEventListener('click', function () {
+          openPaymentReminder(inv);
         });
-      });
+      }
+      var markPaidBtn = document.getElementById('markPaidBtn');
+      if (markPaidBtn) {
+        markPaidBtn.addEventListener('click', function () {
+          api('PATCH', '/api/invoices/' + id, { status: 'paid', amount_paid: inv.total }).then(function (d) {
+            showToast(d.message || 'Marked as paid', 'success');
+            renderInvoiceDetail(id);
+          });
+        });
+      }
       document.getElementById('deleteInvBtn').addEventListener('click', function () {
         if (!confirm('Delete this invoice? This cannot be undone.')) return;
         api('DELETE', '/api/invoices/' + id).then(function (d) {
@@ -2100,7 +2298,7 @@
       '<div class="form-group"><label>Phone No.</label><input id="cPhone" placeholder="Phone number"></div>' +
       '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">' +
         '<div class="form-group"><label>Email</label><input id="cEmail" type="email" placeholder="Email"></div>' +
-        '<div class="form-group"><label>GSTIN</label><input id="cGstin" placeholder="GSTIN" maxlength="15" style="text-transform:uppercase"></div></div>' +
+        '<div class="form-group"><label>GSTIN</label><div class="gstin-input-wrap"><input id="cGstin" placeholder="GSTIN" maxlength="15"><span class="gstin-status" id="cGstinStatus"></span></div></div></div>' +
       '<div class="form-group"><label>Address</label><input id="cAddress" placeholder="Address"></div>' +
       '<div class="form-group"><label>State</label><select id="cState">' + stateOptions('') + '</select></div>' +
     '</div>';
@@ -2329,6 +2527,20 @@
         window._selectedPartyId = p.id || p._id || null;
       }
     );
+
+    bindCustomerGstinAutofill({
+      gstinId: 'cGstin',
+      statusId: 'cGstinStatus',
+      nameId: 'cName',
+      phoneId: 'cPhone',
+      emailId: 'cEmail',
+      addressId: 'cAddress',
+      stateId: 'cState',
+      posStateId: 'posState',
+      onPartyFound: function (p) {
+        window._selectedPartyId = p.id || p._id || null;
+      }
+    });
   }
 
   var itemCounter = 0;
@@ -2700,7 +2912,7 @@
       '<div class="form-group"><label>Phone No.</label><input id="sdCPhone" placeholder="Phone number"></div>' +
       '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">' +
         '<div class="form-group"><label>Email</label><input id="sdCEmail" type="email" placeholder="Email"></div>' +
-        '<div class="form-group"><label>GSTIN</label><input id="sdCGstin" placeholder="GSTIN" maxlength="15" style="text-transform:uppercase"></div></div>' +
+        '<div class="form-group"><label>GSTIN</label><div class="gstin-input-wrap"><input id="sdCGstin" placeholder="GSTIN" maxlength="15"><span class="gstin-status" id="sdCGstinStatus"></span></div></div></div>' +
       '<div class="form-group"><label>Address</label><input id="sdCAddress" placeholder="Address"></div>' +
       '<div class="form-group"><label>State</label><select id="sdCState">' + stateOptions('') + '</select></div>';
 
@@ -2778,6 +2990,17 @@
         if (p.state) document.getElementById('sdCState').value = p.state;
       }
     );
+
+    bindCustomerGstinAutofill({
+      gstinId: 'sdCGstin',
+      statusId: 'sdCGstinStatus',
+      nameId: 'sdCName',
+      phoneId: 'sdCPhone',
+      emailId: 'sdCEmail',
+      addressId: 'sdCAddress',
+      stateId: 'sdCState',
+      posStateId: 'sdPosState'
+    });
 
     // Invoice reference autocomplete for sale returns
     if (docType === 'sale_return') {
@@ -5409,26 +5632,77 @@
   var searchTimer = null;
   var $globalSearch = document.getElementById('globalSearch');
   if ($globalSearch) {
+    function performGlobalSearch() {
+      var q = $globalSearch.value.trim();
+      if (!q) return;
+      $pageTitle.textContent = 'Search';
+      $content.innerHTML = '<p style="color:var(--text-muted)">Searching...</p>';
+      Promise.all([
+        api('GET', '/api/invoices'),
+        api('GET', '/api/parties?q=' + encodeURIComponent(q)),
+        api('GET', '/api/products?q=' + encodeURIComponent(q))
+      ]).then(function (res) {
+        var ql = q.toLowerCase();
+        var invoicesFound = (res[0].invoices || []).filter(function (inv) {
+          return (inv.invoice_number || '').toLowerCase().indexOf(ql) !== -1 ||
+            (inv.customer_name || '').toLowerCase().indexOf(ql) !== -1 ||
+            (inv.customer_phone || '').indexOf(ql) !== -1 ||
+            (inv.customer_email || '').toLowerCase().indexOf(ql) !== -1 ||
+            (inv.customer_gstin || '').toLowerCase().indexOf(ql) !== -1;
+        });
+        var partiesFound = res[1].parties || [];
+        var itemsFound = res[2].products || [];
+        var total = invoicesFound.length + partiesFound.length + itemsFound.length;
+
+        var html = '<div class="search-summary"><div><h3>Search results for "' + esc(q) + '"</h3>' +
+          '<p>' + total + ' result' + (total === 1 ? '' : 's') + ' across invoices, parties, and items</p></div>' +
+          '<button type="button" class="btn btn-outline btn-sm" onclick="window.goTo(\'overview\')">Back Home</button></div>';
+
+        html += '<div class="search-sections">';
+        html += '<div class="table-card search-section"><div class="table-header"><h3>Invoices (' + invoicesFound.length + ')</h3></div>' +
+          (invoicesFound.length ? invoiceTableHTML(invoicesFound.slice(0, 20)) : '<div class="empty-state">No matching invoices.</div>') + '</div>';
+
+        html += '<div class="table-card search-section"><div class="table-header"><h3>Parties (' + partiesFound.length + ')</h3></div>';
+        if (partiesFound.length) {
+          html += '<div class="table-wrap"><table><thead><tr><th>Name</th><th>Phone</th><th>GSTIN</th><th>State</th></tr></thead><tbody>' +
+            partiesFound.map(function (p) {
+              var pid = p.id || p._id;
+              return '<tr style="cursor:pointer" onclick="window.goTo(\'edit-party\',\'' + pid + '\')"><td><strong>' + esc(p.name || '') + '</strong></td><td>' + esc(p.phone || '-') + '</td><td>' + esc(p.gstin || '-') + '</td><td>' + esc(p.state || '-') + '</td></tr>';
+            }).join('') + '</tbody></table></div>';
+        } else {
+          html += '<div class="empty-state">No matching parties.</div>';
+        }
+        html += '</div>';
+
+        html += '<div class="table-card search-section"><div class="table-header"><h3>Items (' + itemsFound.length + ')</h3></div>';
+        if (itemsFound.length) {
+          html += '<div class="table-wrap"><table><thead><tr><th>Item</th><th>HSN/SAC</th><th>Rate</th><th>GST</th><th>Stock</th></tr></thead><tbody>' +
+            itemsFound.map(function (item) {
+              var iid = item.id || item._id;
+              return '<tr style="cursor:pointer" onclick="window.goTo(\'edit-item\',\'' + iid + '\')"><td><strong>' + esc(item.name || '') + '</strong></td><td>' + esc(item.hsn || '-') + '</td><td>' + formatINR(item.rate || 0) + '</td><td>' + (item.gst || 0) + '%</td><td>' + (item.stock_quantity !== undefined ? item.stock_quantity : '-') + '</td></tr>';
+            }).join('') + '</tbody></table></div>';
+        } else {
+          html += '<div class="empty-state">No matching items.</div>';
+        }
+        html += '</div></div>';
+
+        currentPage = 'search';
+        $content.innerHTML = html;
+      }).catch(function () {
+        $content.innerHTML = '<div class="empty-state">Search failed. Please try again.</div>';
+      });
+    }
+
     $globalSearch.addEventListener('keydown', function (e) {
       if (e.key === 'Enter') {
         e.preventDefault();
-        var q = $globalSearch.value.trim();
-        if (!q) return;
-        $pageTitle.textContent = 'Search: "' + q + '"';
-        $content.innerHTML = '<p style="color:var(--text-muted)">Searching...</p>';
-        api('GET', '/api/invoices').then(function (data) {
-          var all = data.invoices || [];
-          var ql = q.toLowerCase();
-          var results = all.filter(function (inv) {
-            return (inv.invoice_number || '').toLowerCase().indexOf(ql) !== -1 ||
-              (inv.customer_name || '').toLowerCase().indexOf(ql) !== -1 ||
-              (inv.customer_phone || '').indexOf(ql) !== -1 ||
-              (inv.customer_gstin || '').toLowerCase().indexOf(ql) !== -1;
-          });
-          $content.innerHTML = '<div class="table-card"><div class="table-header"><h3>Search Results (' + results.length + ')</h3></div>' +
-            (results.length ? invoiceTableHTML(results) : '<div class="empty-state">No invoices match "' + esc(q) + '"</div>') + '</div>';
-        });
+        performGlobalSearch();
       }
+    });
+    $globalSearch.addEventListener('input', function () {
+      clearTimeout(searchTimer);
+      if ($globalSearch.value.trim().length < 3) return;
+      searchTimer = setTimeout(performGlobalSearch, 500);
     });
   }
 
