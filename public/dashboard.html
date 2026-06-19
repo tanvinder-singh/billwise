@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="dashboard.css?v=48" />
+  <link rel="stylesheet" href="dashboard.css?v=49" />
 </head>
 <body>
   <div class="app">
@@ -34,6 +34,12 @@
             <span>Items</span>
           </button>
           <button type="button" class="nav-add-btn" title="Add Item" onclick="window.goTo('add-item')">+</button>
+        </div>
+        <div class="nav-row">
+          <button type="button" class="nav-item" data-page="inventory" onclick="window.goTo('inventory')">
+            <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 3h18v4H3zM3 11h18v10H3zM7 7v0M7 15h4M7 19h10"/></svg>
+            <span>Inventory</span>
+          </button>
         </div>
         <div class="sidebar-divider"></div>
         <div class="nav-group" id="saleNavGroup">
@@ -148,6 +154,6 @@
   <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/3.0.3/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/5.0.2/jspdf.plugin.autotable.min.js"></script>
-  <script src="dashboard.js?v=48"></script>
+  <script src="dashboard.js?v=49"></script>
 </body>
 </html>

@@ -262,6 +262,25 @@ async function initDB() {
         created_at TIMESTAMP DEFAULT NOW()
       );
       CREATE INDEX IF NOT EXISTS idx_expenses_user ON expenses(user_id);
+
+      -- Stock movement ledger (inventory in/out from sales, purchases, manual)
+      CREATE TABLE IF NOT EXISTS stock_movements (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        product_id UUID,
+        product_name VARCHAR(255) NOT NULL,
+        movement_type VARCHAR(30) NOT NULL,
+        quantity NUMERIC(12,2) NOT NULL,
+        balance_after NUMERIC(12,2) NOT NULL,
+        reference_type VARCHAR(30) DEFAULT '',
+        reference_id UUID,
+        reference_number VARCHAR(50) DEFAULT '',
+        notes TEXT DEFAULT '',
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_stock_mov_user ON stock_movements(user_id);
+      CREATE INDEX IF NOT EXISTS idx_stock_mov_product ON stock_movements(user_id, product_id);
+      CREATE INDEX IF NOT EXISTS idx_stock_mov_date ON stock_movements(user_id, created_at);
     `);
     console.log('  [DB] PostgreSQL tables initialized');
   } finally {
@@ -474,5 +493,6 @@ const paymentsIn = createCollection('payments_in');
 const purchaseDocuments = createCollection('purchase_documents');
 const paymentsOut = createCollection('payments_out');
 const expenses = createCollection('expenses');
+const stockMovements = createCollection('stock_movements');
 
-module.exports = { pool, initDB, users, invoices, otps, parties, products, saleDocuments, paymentsIn, purchaseDocuments, paymentsOut, expenses };
+module.exports = { pool, initDB, users, invoices, otps, parties, products, saleDocuments, paymentsIn, purchaseDocuments, paymentsOut, expenses, stockMovements };

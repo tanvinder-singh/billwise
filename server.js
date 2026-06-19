@@ -5,7 +5,7 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const nodemailer = require('nodemailer');
 const cors = require('cors');
-const { initDB, pool, users, invoices, otps, parties, products, saleDocuments, paymentsIn, purchaseDocuments, paymentsOut, expenses } = require('./database');
+const { initDB, pool, users, invoices, otps, parties, products, saleDocuments, paymentsIn, purchaseDocuments, paymentsOut, expenses, stockMovements } = require('./database');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -158,11 +158,14 @@ function safeUser(u) {
   return copy;
 }
 
-async function adjustProductStock(userId, items, multiplier) {
+async function adjustProductStock(userId, items, multiplier, movementMeta) {
   if (!items || !items.length || !multiplier) return;
   const user = await users.findOne({ id: userId });
   const itemSettings = user && user.item_settings ? user.item_settings : {};
   if (!itemSettings.stock) return;
+
+  const meta = movementMeta || {};
+  const movementType = meta.movement_type || (multiplier < 0 ? 'sale' : 'purchase');
 
   for (const item of items) {
     const name = cleanString(item.name, 255);
@@ -171,13 +174,17 @@ async function adjustProductStock(userId, items, multiplier) {
 
     const product = await products.findOne({ user_id: userId, name });
     const delta = qty * multiplier;
+    let productId = product ? product.id : null;
+    let nextQty;
+
     if (product) {
-      const nextQty = (Number(product.stock_quantity) || 0) + delta;
+      nextQty = (Number(product.stock_quantity) || 0) + delta;
       await products.update({ id: product.id, user_id: userId }, {
         $set: { stock_quantity: Math.round(nextQty * 100) / 100, updated_at: new Date() }
       });
     } else {
-      await products.insert({
+      nextQty = delta;
+      const created = await products.insert({
         user_id: userId,
         name,
         hsn: cleanString(item.hsn, 20),
@@ -186,11 +193,26 @@ async function adjustProductStock(userId, items, multiplier) {
         rate: Number(item.rate) || 0,
         gst: Number(item.gst) || 0,
         unit: cleanString(item.unit, 20) || 'Pcs',
-        stock_quantity: Math.round(delta * 100) / 100,
+        stock_quantity: Math.round(nextQty * 100) / 100,
         low_stock_threshold: Number(itemSettings.low_stock_threshold) || 0,
         updated_at: new Date()
       });
+      productId = created.id;
     }
+
+    await stockMovements.insert({
+      user_id: userId,
+      product_id: productId,
+      product_name: name,
+      movement_type: movementType,
+      quantity: Math.round(delta * 100) / 100,
+      balance_after: Math.round(nextQty * 100) / 100,
+      reference_type: meta.reference_type || '',
+      reference_id: meta.reference_id || null,
+      reference_number: meta.reference_number || '',
+      notes: meta.notes || '',
+      created_at: new Date()
+    });
   }
 }
 
@@ -908,7 +930,12 @@ app.post('/api/invoices', auth, async (req, res) => {
     }
 
     try {
-      await adjustProductStock(req.user.id, items, -1);
+      await adjustProductStock(req.user.id, items, -1, {
+        movement_type: 'sale',
+        reference_type: 'invoice',
+        reference_id: inv.id,
+        reference_number: inv.invoice_number
+      });
     } catch (stockErr) {
       console.error('Stock adjustment error (non-critical):', stockErr);
     }
@@ -944,7 +971,12 @@ app.delete('/api/invoices/:id', auth, async (req, res) => {
   const removed = await invoices.remove({ id: req.params.id, user_id: req.user.id });
   if (removed === 0) return res.status(404).json({ error: 'Invoice not found' });
   try {
-    await adjustProductStock(req.user.id, inv.items || [], 1);
+    await adjustProductStock(req.user.id, inv.items || [], 1, {
+      movement_type: 'sale_reversal',
+      reference_type: 'invoice',
+      reference_id: inv.id,
+      reference_number: inv.invoice_number
+    });
   } catch (stockErr) {
     console.error('Stock adjustment error (non-critical):', stockErr);
   }
@@ -1028,7 +1060,12 @@ app.post('/api/sale-docs', auth, async (req, res) => {
 
     if (doc_type === 'sale_return') {
       try {
-        await adjustProductStock(req.user.id, items, 1);
+        await adjustProductStock(req.user.id, items, 1, {
+          movement_type: 'sale_return',
+          reference_type: 'sale_document',
+          reference_id: doc.id,
+          reference_number: doc.doc_number
+        });
       } catch (stockErr) {
         console.error('Stock adjustment error (non-critical):', stockErr);
       }
@@ -1094,7 +1131,12 @@ app.delete('/api/sale-docs/:id', auth, async (req, res) => {
     if (removed === 0) return res.status(404).json({ error: 'Document not found' });
     if (doc.doc_type === 'sale_return') {
       try {
-        await adjustProductStock(req.user.id, doc.items || [], -1);
+        await adjustProductStock(req.user.id, doc.items || [], -1, {
+          movement_type: 'sale_return_reversal',
+          reference_type: 'sale_document',
+          reference_id: doc.id,
+          reference_number: doc.doc_number
+        });
       } catch (stockErr) {
         console.error('Stock adjustment error (non-critical):', stockErr);
       }
@@ -1146,7 +1188,12 @@ app.post('/api/sale-docs/:id/convert', auth, async (req, res) => {
     });
 
     try {
-      await adjustProductStock(req.user.id, doc.items || [], -1);
+      await adjustProductStock(req.user.id, doc.items || [], -1, {
+        movement_type: 'sale',
+        reference_type: 'invoice',
+        reference_id: inv.id,
+        reference_number: inv.invoice_number
+      });
     } catch (stockErr) {
       console.error('Stock adjustment error (non-critical):', stockErr);
     }
@@ -1341,7 +1388,12 @@ app.post('/api/purchase-docs', auth, async (req, res) => {
 
     if (doc_type === 'purchase_bill' || doc_type === 'purchase_return') {
       try {
-        await adjustProductStock(req.user.id, items || [], doc_type === 'purchase_bill' ? 1 : -1);
+        await adjustProductStock(req.user.id, items || [], doc_type === 'purchase_bill' ? 1 : -1, {
+          movement_type: doc_type === 'purchase_bill' ? 'purchase' : 'purchase_return',
+          reference_type: 'purchase_document',
+          reference_id: doc.id,
+          reference_number: doc.doc_number
+        });
       } catch (stockErr) {
         console.error('Stock adjustment error (non-critical):', stockErr);
       }
@@ -1375,7 +1427,12 @@ app.delete('/api/purchase-docs/:id', auth, async (req, res) => {
     if (removed === 0) return res.status(404).json({ error: 'Document not found' });
     if (doc.doc_type === 'purchase_bill' || doc.doc_type === 'purchase_return') {
       try {
-        await adjustProductStock(req.user.id, doc.items || [], doc.doc_type === 'purchase_bill' ? -1 : 1);
+        await adjustProductStock(req.user.id, doc.items || [], doc.doc_type === 'purchase_bill' ? -1 : 1, {
+          movement_type: doc.doc_type === 'purchase_bill' ? 'purchase_reversal' : 'purchase_return_reversal',
+          reference_type: 'purchase_document',
+          reference_id: doc.id,
+          reference_number: doc.doc_number
+        });
       } catch (stockErr) {
         console.error('Stock adjustment error (non-critical):', stockErr);
       }
@@ -1642,6 +1699,107 @@ app.get('/api/party-statement', auth, async (req, res) => {
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'Failed to generate party statement' });
+  }
+});
+
+// ─── INVENTORY ──────────────────────────────────────────────
+app.get('/api/inventory/summary', auth, async (req, res) => {
+  try {
+    const user = await users.findOne({ id: req.user.id });
+    const stockEnabled = !!(user && user.item_settings && user.item_settings.stock);
+    if (!stockEnabled) {
+      return res.json({ stock_enabled: false, products: [], stats: {} });
+    }
+    const allProducts = await products.find({ user_id: req.user.id }).sort({ name: 1 });
+    const lowThreshold = Number(user.item_settings.low_stock_threshold) || 10;
+    let lowStock = 0;
+    let outOfStock = 0;
+    let totalValue = 0;
+    const enriched = allProducts.map(p => {
+      const qty = Number(p.stock_quantity) || 0;
+      const threshold = Number(p.low_stock_threshold) || lowThreshold;
+      const status = qty <= 0 ? 'out' : (qty <= threshold ? 'low' : 'ok');
+      if (qty <= 0) outOfStock++;
+      else if (qty <= threshold) lowStock++;
+      totalValue += qty * (Number(p.rate) || 0);
+      return { ...p, stock_status: status, low_threshold: threshold };
+    });
+    res.json({
+      stock_enabled: true,
+      products: enriched,
+      stats: {
+        total_items: allProducts.length,
+        low_stock: lowStock,
+        out_of_stock: outOfStock,
+        inventory_value: Math.round(totalValue * 100) / 100
+      }
+    });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Failed to fetch inventory summary' });
+  }
+});
+
+app.get('/api/inventory/movements', auth, async (req, res) => {
+  try {
+    const user = await users.findOne({ id: req.user.id });
+    if (!user || !user.item_settings || !user.item_settings.stock) {
+      return res.json({ movements: [] });
+    }
+    const { product_id, type, limit: limitQ } = req.query;
+    const filter = { user_id: req.user.id };
+    if (product_id) filter.product_id = product_id;
+    if (type) filter.movement_type = type;
+    let list = await stockMovements.find(filter).sort({ created_at: -1 });
+    const limit = Math.min(parseInt(limitQ, 10) || 100, 500);
+    list = list.slice(0, limit);
+    res.json({ movements: list });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Failed to fetch stock movements' });
+  }
+});
+
+app.post('/api/inventory/adjust', auth, async (req, res) => {
+  try {
+    const user = await users.findOne({ id: req.user.id });
+    if (!user || !user.item_settings || !user.item_settings.stock) {
+      return res.status(400).json({ error: 'Stock maintenance is disabled. Enable it in Settings.' });
+    }
+    const { product_id, quantity_change, notes } = req.body;
+    const delta = Number(quantity_change);
+    if (!product_id || !delta) {
+      return res.status(400).json({ error: 'Product and non-zero quantity change are required' });
+    }
+    const product = await products.findOne({ id: product_id, user_id: req.user.id });
+    if (!product) return res.status(404).json({ error: 'Product not found' });
+
+    const nextQty = (Number(product.stock_quantity) || 0) + delta;
+    await products.update({ id: product.id, user_id: req.user.id }, {
+      $set: { stock_quantity: Math.round(nextQty * 100) / 100, updated_at: new Date() }
+    });
+
+    const movement = await stockMovements.insert({
+      user_id: req.user.id,
+      product_id: product.id,
+      product_name: product.name,
+      movement_type: 'manual',
+      quantity: Math.round(delta * 100) / 100,
+      balance_after: Math.round(nextQty * 100) / 100,
+      reference_type: 'manual',
+      reference_number: '',
+      notes: cleanString(notes, 500) || (delta > 0 ? 'Manual stock in' : 'Manual stock out'),
+      created_at: new Date()
+    });
+
+    res.json({
+      movement,
+      product: { ...product, stock_quantity: Math.round(nextQty * 100) / 100 },
+      message: 'Stock adjusted'
+    });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'Failed to adjust stock' });
   }
 });
 

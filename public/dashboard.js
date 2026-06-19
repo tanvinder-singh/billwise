@@ -56,6 +56,7 @@
         case 'overview':    renderOverview(); break;
         case 'parties':     renderParties(); break;
         case 'items':       renderItems(); break;
+        case 'inventory':   renderInventory(); break;
         case 'add-party':   renderAddParty(); break;
         case 'edit-party':  renderEditParty(param); break;
         case 'party-statement': renderPartyStatement(param); break;
@@ -666,7 +667,7 @@
         '<div class="action-grid">' +
           actionCardHTML(overdueInvoices.length ? 'danger' : 'success', 'Overdue Receivables', overdueInvoices.length ? formatINR(overdueAmount) : 'Clear', overdueInvoices.length ? (overdueInvoices.length + ' invoice' + (overdueInvoices.length === 1 ? '' : 's') + ' past due') : 'No overdue customer payments', overdueInvoices.length ? 'Review Invoices' : 'All Good', 'window.goTo(\'invoices\')') +
           actionCardHTML(dueSoonInvoices.length ? 'warning' : 'neutral', 'Due This Week', dueSoonInvoices.length ? formatINR(dueSoonAmount) : 'None', dueSoonInvoices.length ? (dueSoonInvoices.length + ' payment' + (dueSoonInvoices.length === 1 ? '' : 's') + ' coming up') : 'No near-term receivables', 'View Invoices', 'window.goTo(\'invoices\')') +
-          actionCardHTML(lowStockItems.length ? 'warning' : 'neutral', 'Stock Alerts', lowStockItems.length ? lowStockItems.length + ' item' + (lowStockItems.length === 1 ? '' : 's') : 'Off', itemSettings.stock ? (lowStockItems.length ? 'At or below low-stock threshold' : 'Inventory levels look healthy') : 'Enable stock tracking in item settings', itemSettings.stock ? 'Open Items' : 'Set Up Stock', itemSettings.stock ? 'window.goTo(\'items\')' : 'window.goTo(\'settings\')') +
+          actionCardHTML(lowStockItems.length ? 'warning' : 'neutral', 'Stock Alerts', lowStockItems.length ? lowStockItems.length + ' item' + (lowStockItems.length === 1 ? '' : 's') : 'Off', itemSettings.stock ? (lowStockItems.length ? 'At or below low-stock threshold' : 'Inventory levels look healthy') : 'Enable stock tracking in item settings', itemSettings.stock ? 'Open Inventory' : 'Set Up Stock', itemSettings.stock ? 'window.goTo(\'inventory\')' : 'window.goTo(\'settings\')') +
           actionCardHTML(profileReadyPct === 100 ? 'success' : 'warning', 'Invoice Profile', profileReadyPct + '% ready', profileReadyPct === 100 ? 'Business details are ready for invoices' : 'Add GSTIN, address, state, and business name', 'Open Settings', 'window.goTo(\'settings\')') +
         '</div></div>';
 
@@ -1062,6 +1063,253 @@
       });
     });
   }
+
+  // ── Inventory Page ─────────────────────────────────────────
+  var inventoryTab = 'stock';
+  var MOVEMENT_LABELS = {
+    sale: 'Sale (Out)',
+    sale_reversal: 'Sale Reversed (In)',
+    sale_return: 'Sale Return (In)',
+    sale_return_reversal: 'Return Reversed (Out)',
+    purchase: 'Purchase (In)',
+    purchase_reversal: 'Purchase Reversed (Out)',
+    purchase_return: 'Purchase Return (Out)',
+    purchase_return_reversal: 'Purchase Return Reversed (In)',
+    manual: 'Manual Adjustment'
+  };
+
+  function stockStatusBadge(status, qty) {
+    if (status === 'out') return '<span class="item-badge badge-stock out">Out of Stock</span>';
+    if (status === 'low') return '<span class="item-badge badge-stock low">Low: ' + qty + '</span>';
+    return '<span class="item-badge badge-stock">In Stock</span>';
+  }
+
+  function movementQtyHTML(qty) {
+    var n = Number(qty) || 0;
+    var cls = n > 0 ? 'stock-qty-in' : (n < 0 ? 'stock-qty-out' : '');
+    var prefix = n > 0 ? '+' : '';
+    return '<span class="' + cls + '">' + prefix + n + '</span>';
+  }
+
+  function renderInventoryStockRows(products) {
+    if (!products.length) {
+      return '<tr><td colspan="8" class="empty-state">No items yet. Add items or create invoices to build inventory.</td></tr>';
+    }
+    return products.map(function (p) {
+      var pid = p.id || p._id;
+      var qty = Number(p.stock_quantity) || 0;
+      var value = qty * (Number(p.rate) || 0);
+      return '<tr data-name="' + esc((p.name || '').toLowerCase()) + '">' +
+        '<td><strong>' + esc(p.name || '') + '</strong></td>' +
+        '<td>' + esc(p.hsn || '-') + '</td>' +
+        '<td>' + esc(p.unit || 'Pcs') + '</td>' +
+        '<td class="text-right"><strong>' + qty + '</strong></td>' +
+        '<td>' + stockStatusBadge(p.stock_status, qty) + '</td>' +
+        '<td class="text-right">' + formatINR(p.rate || 0) + '</td>' +
+        '<td class="text-right">' + formatINR(value) + '</td>' +
+        '<td class="text-center inv-row-actions">' +
+          '<button type="button" class="btn btn-outline btn-sm inv-adjust-btn" data-id="' + pid + '" data-name="' + esc(p.name || '') + '" data-qty="' + qty + '">Adjust</button>' +
+          '<button type="button" class="btn btn-ghost btn-sm" onclick="window.viewInventoryHistory(\'' + pid + '\')">History</button>' +
+        '</td></tr>';
+    }).join('');
+  }
+
+  function renderInventoryMovementRows(movements) {
+    if (!movements.length) {
+      return '<tr><td colspan="7" class="empty-state">No stock movements yet. Sales, purchases, and returns will appear here.</td></tr>';
+    }
+    return movements.map(function (m) {
+      var ref = m.reference_number ? esc(m.reference_number) : '-';
+      if (m.reference_type === 'invoice' && m.reference_id) {
+        ref = '<button type="button" class="btn-link" onclick="window.goTo(\'invoice\',\'' + m.reference_id + '\')">' + esc(m.reference_number) + '</button>';
+      } else if (m.reference_type === 'sale_document' && m.reference_id) {
+        var salePage = (m.movement_type || '').indexOf('return') !== -1 ? 'sale-return' : 'estimate';
+        ref = '<button type="button" class="btn-link" onclick="window.goTo(\'' + salePage + '\',\'' + m.reference_id + '\')">' + esc(m.reference_number) + '</button>';
+      } else if (m.reference_type === 'purchase_document' && m.reference_id) {
+        var purPage = (m.movement_type || '').indexOf('return') !== -1 ? 'purchase-return' : 'purchase-bill';
+        ref = '<button type="button" class="btn-link" onclick="window.goTo(\'' + purPage + '\',\'' + m.reference_id + '\')">' + esc(m.reference_number) + '</button>';
+      }
+      return '<tr data-product="' + esc((m.product_name || '').toLowerCase()) + '" data-type="' + esc(m.movement_type || '') + '">' +
+        '<td>' + formatDate(m.created_at) + '</td>' +
+        '<td><strong>' + esc(m.product_name || '') + '</strong></td>' +
+        '<td>' + esc(MOVEMENT_LABELS[m.movement_type] || m.movement_type || '-') + '</td>' +
+        '<td class="text-right">' + movementQtyHTML(m.quantity) + '</td>' +
+        '<td class="text-right">' + (Number(m.balance_after) || 0) + '</td>' +
+        '<td>' + ref + '</td>' +
+        '<td style="color:var(--text-muted);font-size:0.8125rem">' + esc(m.notes || '') + '</td>' +
+      '</tr>';
+    }).join('');
+  }
+
+  function loadInventoryContent(productFilter, typeFilter) {
+    var q = '/api/inventory/movements?limit=200';
+    if (productFilter) q += '&product_id=' + encodeURIComponent(productFilter);
+    if (typeFilter) q += '&type=' + encodeURIComponent(typeFilter);
+    return Promise.all([
+      api('GET', '/api/inventory/summary'),
+      api('GET', q)
+    ]);
+  }
+
+  function renderInventory(productFilter, typeFilter) {
+    $pageTitle.textContent = 'Inventory';
+    $content.innerHTML = '<p style="color:var(--text-muted)">Loading...</p>';
+    var itemSettings = (currentUser && currentUser.item_settings) || {};
+    if (!itemSettings.stock) {
+      $content.innerHTML = '<div class="empty-state" style="padding:48px 24px">' +
+        '<h3 style="margin:0 0 8px">Stock tracking is off</h3>' +
+        '<p style="color:var(--text-muted);margin:0 0 16px">Enable <strong>Stock Maintenance</strong> in Settings to track inventory from sales and purchases.</p>' +
+        '<button type="button" class="btn btn-primary" onclick="window.goTo(\'settings\')">Open Settings</button></div>';
+      return;
+    }
+
+    loadInventoryContent(productFilter, typeFilter).then(function (res) {
+      var summary = res[0];
+      var movements = res[1].movements || [];
+      var products = summary.products || [];
+      var stats = summary.stats || {};
+
+      var html = '<div class="stats-grid" style="margin-bottom:20px">' +
+        statCard('Total Items', stats.total_items || 0, '') +
+        statCard('Low Stock', stats.low_stock || 0, 'warning') +
+        statCard('Out of Stock', stats.out_of_stock || 0, 'danger') +
+        statCard('Inventory Value', formatINR(stats.inventory_value || 0), 'primary') +
+      '</div>';
+
+      html += '<div class="inv-mgmt-tabs">' +
+        '<button type="button" class="inv-mgmt-tab' + (inventoryTab === 'stock' ? ' active' : '') + '" data-tab="stock">Stock Levels</button>' +
+        '<button type="button" class="inv-mgmt-tab' + (inventoryTab === 'history' ? ' active' : '') + '" data-tab="history">Movement History</button>' +
+      '</div>';
+
+      if (inventoryTab === 'stock') {
+        html += '<div class="page-actions">' +
+          '<div class="page-search"><svg width="16" height="16" fill="none" stroke="var(--text-muted)" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>' +
+          '<input type="text" id="invStockSearch" placeholder="Search items..." autocomplete="off"></div>' +
+          '<button type="button" class="btn btn-outline btn-sm" onclick="window.goTo(\'items\')">Manage Items</button>' +
+        '</div>';
+        html += '<div class="table-wrap"><table><thead><tr>' +
+          '<th>Item</th><th>HSN</th><th>Unit</th><th class="text-right">Stock</th><th>Status</th>' +
+          '<th class="text-right">Rate</th><th class="text-right">Value</th><th class="text-center">Actions</th>' +
+        '</tr></thead><tbody id="invStockBody">' + renderInventoryStockRows(products) + '</tbody></table></div>';
+      } else {
+        var productOpts = '<option value="">All Items</option>' + products.map(function (p) {
+          var pid = p.id || p._id;
+          var sel = productFilter === pid ? ' selected' : '';
+          return '<option value="' + pid + '"' + sel + '>' + esc(p.name || '') + '</option>';
+        }).join('');
+        var typeOpts = '<option value="">All Types</option>' + Object.keys(MOVEMENT_LABELS).map(function (k) {
+          var sel = typeFilter === k ? ' selected' : '';
+          return '<option value="' + k + '"' + sel + '>' + esc(MOVEMENT_LABELS[k]) + '</option>';
+        }).join('');
+        html += '<div class="page-actions inv-history-filters">' +
+          '<select id="invHistProduct" class="form-select">' + productOpts + '</select>' +
+          '<select id="invHistType" class="form-select">' + typeOpts + '</select>' +
+          '<button type="button" class="btn btn-outline btn-sm" id="invHistRefresh">Refresh</button>' +
+        '</div>';
+        html += '<div class="table-wrap"><table><thead><tr>' +
+          '<th>Date</th><th>Item</th><th>Type</th><th class="text-right">Qty Change</th>' +
+          '<th class="text-right">Balance</th><th>Reference</th><th>Notes</th>' +
+        '</tr></thead><tbody id="invMovBody">' + renderInventoryMovementRows(movements) + '</tbody></table></div>';
+      }
+
+      html += '<div class="admin-modal-overlay" id="invAdjustModal" style="display:none">' +
+        '<div class="admin-modal" style="max-width:420px">' +
+          '<div class="admin-modal-header"><h3>Adjust Stock</h3><button type="button" class="ap-close" id="invAdjustClose">&times;</button></div>' +
+          '<div class="admin-modal-body">' +
+            '<p id="invAdjustItemName" style="font-weight:600;margin:0 0 4px"></p>' +
+            '<p style="color:var(--text-muted);font-size:0.875rem;margin:0 0 16px">Current stock: <span id="invAdjustCurrent"></span></p>' +
+            '<div class="form-group"><label>Quantity Change</label>' +
+              '<input type="number" id="invAdjustQty" step="0.01" placeholder="e.g. +10 or -5">' +
+              '<small style="color:var(--text-muted)">Positive adds stock, negative removes stock</small></div>' +
+            '<div class="form-group"><label>Notes (optional)</label><input type="text" id="invAdjustNotes" placeholder="Reason for adjustment"></div>' +
+          '</div>' +
+          '<div class="admin-modal-footer">' +
+            '<button type="button" class="btn btn-outline" id="invAdjustCancel">Cancel</button>' +
+            '<button type="button" class="btn btn-primary" id="invAdjustSave">Save Adjustment</button>' +
+          '</div></div></div>';
+
+      $content.innerHTML = html;
+
+      $content.querySelectorAll('.inv-mgmt-tab').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          inventoryTab = btn.getAttribute('data-tab');
+          renderInventory(productFilter, typeFilter);
+        });
+      });
+
+      var searchInput = document.getElementById('invStockSearch');
+      if (searchInput) {
+        searchInput.addEventListener('input', function () {
+          var q = this.value.trim().toLowerCase();
+          document.querySelectorAll('#invStockBody tr').forEach(function (row) {
+            row.style.display = !q || (row.getAttribute('data-name') || '').indexOf(q) !== -1 ? '' : 'none';
+          });
+        });
+      }
+
+      var adjustModal = document.getElementById('invAdjustModal');
+      var adjustProductId = null;
+      function closeAdjustModal() {
+        if (adjustModal) adjustModal.style.display = 'none';
+        adjustProductId = null;
+      }
+      $content.querySelectorAll('.inv-adjust-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          adjustProductId = btn.getAttribute('data-id');
+          document.getElementById('invAdjustItemName').textContent = btn.getAttribute('data-name') || '';
+          document.getElementById('invAdjustCurrent').textContent = btn.getAttribute('data-qty') || '0';
+          document.getElementById('invAdjustQty').value = '';
+          document.getElementById('invAdjustNotes').value = '';
+          adjustModal.style.display = 'flex';
+        });
+      });
+      var closeBtn = document.getElementById('invAdjustClose');
+      var cancelBtn = document.getElementById('invAdjustCancel');
+      if (closeBtn) closeBtn.addEventListener('click', closeAdjustModal);
+      if (cancelBtn) cancelBtn.addEventListener('click', closeAdjustModal);
+      if (adjustModal) {
+        adjustModal.addEventListener('click', function (e) {
+          if (e.target === adjustModal) closeAdjustModal();
+        });
+      }
+      var saveBtn = document.getElementById('invAdjustSave');
+      if (saveBtn) {
+        saveBtn.addEventListener('click', function () {
+          if (!adjustProductId) return;
+          var delta = parseFloat(document.getElementById('invAdjustQty').value);
+          if (!delta) { showToast('Enter a non-zero quantity change', 'error'); return; }
+          var notes = document.getElementById('invAdjustNotes').value.trim();
+          api('POST', '/api/inventory/adjust', {
+            product_id: adjustProductId,
+            quantity_change: delta,
+            notes: notes
+          }).then(function (d) {
+            showToast(d.message || 'Stock adjusted', 'success');
+            closeAdjustModal();
+            renderInventory(productFilter, typeFilter);
+          });
+        });
+      }
+
+      var histProduct = document.getElementById('invHistProduct');
+      var histType = document.getElementById('invHistType');
+      var histRefresh = document.getElementById('invHistRefresh');
+      function applyHistFilters() {
+        renderInventory(histProduct ? histProduct.value : '', histType ? histType.value : '');
+      }
+      if (histProduct) histProduct.addEventListener('change', applyHistFilters);
+      if (histType) histType.addEventListener('change', applyHistFilters);
+      if (histRefresh) histRefresh.addEventListener('click', applyHistFilters);
+    }).catch(function (err) {
+      console.error(err);
+      $content.innerHTML = '<div class="empty-state">Failed to load inventory.</div>';
+    });
+  }
+
+  window.viewInventoryHistory = function (productId) {
+    inventoryTab = 'history';
+    renderInventory(productId || '', '');
+  };
 
   // ── Add Party Page (Vyapar-style) ──────────────────────────
   function renderAddParty() {
