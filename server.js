@@ -526,10 +526,11 @@ app.get('/api/products', auth, async (req, res) => {
     const { pool } = require('./database');
     let sql, params;
     if (q) {
-      sql = `SELECT * FROM products WHERE user_id = $1 AND name ILIKE $2 ORDER BY updated_at DESC LIMIT 20`;
-      params = [req.user.id, '%' + q + '%'];
+      sql = `SELECT * FROM products WHERE user_id = $1 AND (name ILIKE $2 OR hsn ILIKE $2)
+        ORDER BY CASE WHEN name ILIKE $3 THEN 0 WHEN name ILIKE $2 THEN 1 ELSE 2 END, name ASC LIMIT 25`;
+      params = [req.user.id, '%' + q + '%', q + '%'];
     } else {
-      sql = `SELECT * FROM products WHERE user_id = $1 ORDER BY name ASC`;
+      sql = `SELECT * FROM products WHERE user_id = $1 ORDER BY name ASC LIMIT 100`;
       params = [req.user.id];
     }
     const result = await pool.query(sql, params);

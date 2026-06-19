@@ -445,10 +445,52 @@
   // ─── Autocomplete ────────────────────────────────────────────
   var _acTimers = {};
   var _acIdCounter = 0;
+  var _productsCache = null;
+  var _productsCacheAt = 0;
+
+  function invalidateProductsCache() {
+    _productsCache = null;
+    _productsCacheAt = 0;
+  }
+
+  function getProductsCache(force) {
+    if (!force && _productsCache && Date.now() - _productsCacheAt < 120000) {
+      return Promise.resolve(_productsCache);
+    }
+    return api('GET', '/api/products?q=').then(function (res) {
+      _productsCache = res.products || [];
+      _productsCacheAt = Date.now();
+      return _productsCache;
+    }).catch(function () {
+      return _productsCache || [];
+    });
+  }
+
+  function filterProducts(products, q) {
+    var query = (q || '').trim().toLowerCase();
+    if (!query) return products.slice(0, 25);
+    var starts = [];
+    var contains = [];
+    products.forEach(function (p) {
+      var name = (p.name || '').toLowerCase();
+      var hsn = (p.hsn || '').toLowerCase();
+      if (name.indexOf(query) === 0 || hsn.indexOf(query) === 0) starts.push(p);
+      else if (name.indexOf(query) !== -1 || hsn.indexOf(query) !== -1) contains.push(p);
+    });
+    return starts.concat(contains).slice(0, 25);
+  }
+
+  function productAcRender(p, q) {
+    return '<div class="ac-main">' + acHL(p.name, q) + '</div><div class="ac-sub">' +
+      (p.hsn ? 'HSN: ' + esc(p.hsn) + ' \u2022 ' : '') + formatINR(p.rate || 0) +
+      ' \u2022 GST: ' + (p.gst || 0) + '%' + (p.unit ? ' \u2022 ' + esc(p.unit) : '') + '</div>';
+  }
+
   function acSearch(input, dropdown, endpoint, renderFn, selectFn) {
     input.setAttribute('autocomplete', 'off');
     var _data = [];
-    // Use a fixed-position popup appended to body so it escapes all overflow containers
+    var _activeIdx = -1;
+    var useProductCache = endpoint === '/api/products';
     var popup = document.createElement('div');
     popup.className = 'ac-popup';
     popup.style.cssText = 'display:none;position:fixed;z-index:9999;background:#fff;border:1.5px solid var(--primary);border-radius:0 0 8px 8px;box-shadow:0 8px 24px rgba(0,0,0,0.2);max-height:260px;overflow-y:auto;min-width:280px;';
@@ -462,36 +504,75 @@
     }
 
     function showPopup() { positionPopup(); popup.style.display = 'block'; }
-    function hidePopup() { popup.style.display = 'none'; }
+    function hidePopup() { popup.style.display = 'none'; _activeIdx = -1; }
+
+    function renderResults(list, q) {
+      _data = list;
+      if (!_data.length) {
+        popup.innerHTML = '<div class="ac-empty">' + (q ? 'No matching items — press Enter to use new name' : 'No saved items yet') + '</div>';
+        showPopup();
+        return;
+      }
+      popup.innerHTML = _data.map(function (d, i) {
+        return '<div class="ac-item' + (i === _activeIdx ? ' active' : '') + '" data-idx="' + i + '">' + renderFn(d, q) + '</div>';
+      }).join('');
+      showPopup();
+    }
+
+    function selectActive() {
+      if (_activeIdx >= 0 && _data[_activeIdx]) {
+        selectFn(_data[_activeIdx]);
+        hidePopup();
+        return true;
+      }
+      return false;
+    }
 
     var _acKey = endpoint + '_' + (input.id || input.getAttribute('data-f') || ('ac' + (++_acIdCounter)));
-    function doSearch(q) {
+    function doSearch(q, immediate) {
       clearTimeout(_acTimers[_acKey]);
+      var delay = immediate ? 0 : (q ? 80 : 0);
       _acTimers[_acKey] = setTimeout(function () {
+        if (useProductCache) {
+          getProductsCache().then(function (products) {
+            renderResults(filterProducts(products, q), q);
+          });
+          return;
+        }
         api('GET', endpoint + '?q=' + encodeURIComponent(q)).then(function (res) {
-          _data = res.parties || res.products || res.invoices || res.documents || res.payments || [];
-          if (!_data.length) {
-            popup.innerHTML = '<div class="ac-empty">No results found</div>';
-            showPopup();
-            return;
-          }
-          popup.innerHTML = _data.map(function (d, i) {
-            return '<div class="ac-item" data-idx="' + i + '">' + renderFn(d, q) + '</div>';
-          }).join('');
-          showPopup();
+          renderResults(res.parties || res.products || res.invoices || res.documents || res.payments || [], q);
         });
-      }, q ? 200 : 50);
+      }, delay);
     }
 
     input.addEventListener('input', function () {
+      _activeIdx = -1;
       doSearch(input.value.trim());
+    });
+
+    input.addEventListener('keydown', function (e) {
+      if (popup.style.display === 'none' || !_data.length) return;
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        _activeIdx = Math.min(_activeIdx + 1, _data.length - 1);
+        renderResults(_data, input.value.trim());
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        _activeIdx = Math.max(_activeIdx - 1, 0);
+        renderResults(_data, input.value.trim());
+      } else if (e.key === 'Enter' && _activeIdx >= 0) {
+        e.preventDefault();
+        selectActive();
+      } else if (e.key === 'Escape') {
+        hidePopup();
+      }
     });
 
     popup.addEventListener('mousedown', function (e) {
       e.preventDefault();
       var el = e.target.closest('.ac-item');
       if (!el) return;
-      var idx = parseInt(el.getAttribute('data-idx'));
+      var idx = parseInt(el.getAttribute('data-idx'), 10);
       if (_data[idx]) { selectFn(_data[idx]); hidePopup(); }
     });
 
@@ -500,10 +581,9 @@
     });
 
     input.addEventListener('focus', function () {
-      doSearch(input.value.trim());
+      doSearch(input.value.trim(), true);
     });
 
-    // Reposition on scroll
     var scrollParent = input.closest('.table-wrap') || input.closest('.content') || window;
     if (scrollParent && scrollParent !== window) {
       scrollParent.addEventListener('scroll', function () {
@@ -1056,6 +1136,7 @@
           e.stopPropagation();
           if (!confirm('Delete this item?')) return;
           api('DELETE', '/api/products/' + btn.getAttribute('data-id')).then(function (d) {
+            invalidateProductsCache();
             showToast(d.message || 'Deleted', 'success');
             renderItems();
           });
@@ -2045,6 +2126,25 @@
     }
   }
 
+  function fillAddItemFromProduct(p) {
+    var set = function (id, val) {
+      var el = document.getElementById(id);
+      if (el) el.value = val;
+    };
+    set('aiName', p.name || '');
+    set('aiHsn', p.hsn || '');
+    set('aiRate', p.rate || '');
+    set('aiMrp', p.mrp || '');
+    if (document.getElementById('aiGst')) document.getElementById('aiGst').value = p.gst !== undefined ? p.gst : 0;
+    if (document.getElementById('aiUnit')) document.getElementById('aiUnit').value = p.unit || 'Pcs';
+    set('aiSize', p.size || '');
+    if (document.getElementById('aiDesc')) document.getElementById('aiDesc').value = p.description || '';
+    if (document.getElementById('aiCategory') && p.category) document.getElementById('aiCategory').value = p.category;
+    if (document.getElementById('aiStockQty')) document.getElementById('aiStockQty').value = p.stock_quantity || 0;
+    if (document.getElementById('aiLowStock')) document.getElementById('aiLowStock').value = p.low_stock_threshold || 10;
+    showToast('Loaded "' + (p.name || '') + '"', 'success');
+  }
+
   // ── Add Item Page ──────────────────────────────────────────
   function renderAddItem() {
     $pageTitle.textContent = 'Add Item';
@@ -2061,7 +2161,7 @@
       '<button type="button" class="btn btn-ghost btn-sm" onclick="window.goTo(\'items\')">&larr; Back to Items</button></div>' +
       '<form id="addItemForm" class="add-form-body" novalidate>' +
         '<div class="add-form-grid">' +
-          '<div class="form-group"><label>Item Name <span class="req">*</span></label><input id="aiName" placeholder="e.g. Cotton Shirt" required></div>' +
+          '<div class="form-group"><label>Item Name <span class="req">*</span></label><div class="ac-wrap"><input id="aiName" placeholder="Type e.g. shirt, pen..." autocomplete="off" required><div class="ac-dropdown"></div></div></div>' +
           '<div class="form-group"><label>HSN Code</label><input id="aiHsn" placeholder="e.g. 6109"></div>' +
           '<div class="form-group"><label>Sale Price / Rate <span class="req">*</span></label><input id="aiRate" type="number" step="0.01" min="0" placeholder="0.00" required></div>' +
           '<div class="form-group"><label>MRP</label><input id="aiMrp" type="number" step="0.01" min="0" placeholder="0.00"></div>' +
@@ -2083,6 +2183,11 @@
         '</div>' +
       '</form></div>';
     $content.innerHTML = html;
+    getProductsCache(true);
+    var aiNameInput = document.getElementById('aiName');
+    if (aiNameInput) {
+      acSearch(aiNameInput, aiNameInput.parentNode.querySelector('.ac-dropdown'), '/api/products', productAcRender, fillAddItemFromProduct);
+    }
 
     document.getElementById('addItemForm').addEventListener('submit', function (e) {
       e.preventDefault();
@@ -2111,6 +2216,7 @@
       if (document.getElementById('aiModelNo')) body.model_no = document.getElementById('aiModelNo').value.trim();
       api('POST', '/api/products', body).then(function (res) {
         if (res.error) { showToast(res.error, 'error'); btn.disabled = false; btn.textContent = 'Save Item'; return; }
+        invalidateProductsCache();
         showToast(res.message || 'Item added!', 'success');
         window.goTo('items');
       }).catch(function () { showToast('Failed to add item', 'error'); btn.disabled = false; btn.textContent = 'Save Item'; });
@@ -2197,6 +2303,7 @@
         if (document.getElementById('aiModelNo')) body.model_no = document.getElementById('aiModelNo').value.trim();
         api('PUT', '/api/products/' + itemId, body).then(function (res) {
           if (res.error) { showToast(res.error, 'error'); btn.disabled = false; btn.textContent = 'Update Item'; return; }
+          invalidateProductsCache();
           showToast(res.message || 'Item updated!', 'success');
           window.goTo('items');
         }).catch(function () { showToast('Failed to update item', 'error'); btn.disabled = false; btn.textContent = 'Update Item'; });
@@ -2716,6 +2823,7 @@
       '<button type="submit" class="btn btn-primary btn-lg" style="min-width:140px">Save</button></div></form>';
 
     $content.innerHTML = html;
+    getProductsCache(true);
     addItemRow();
 
     // Event listeners
@@ -2860,7 +2968,7 @@
     });
     tr.innerHTML =
       '<td class="row-num" style="text-align:center;color:var(--text-muted);font-weight:500">' + rowNum + '</td>' +
-      '<td data-col="name"' + _cv('name') + '><div class="ac-wrap"><input data-f="name" placeholder="Item name" autocomplete="off"><div class="ac-dropdown"></div></div></td>' +
+      '<td data-col="name"' + _cv('name') + '><div class="ac-wrap"><input data-f="name" placeholder="Type item e.g. shirt, pen" autocomplete="off"><div class="ac-dropdown"></div></div></td>' +
       '<td data-col="hsn"' + _cv('hsn') + '><input data-f="hsn" placeholder="HSN"></td>' +
       '<td data-col="size"' + _cv('size') + '><input data-f="size" placeholder="Size"></td>' +
       '<td data-col="mrp"' + _cv('mrp') + '><input data-f="mrp" type="number" min="0" step="0.01" placeholder="0"></td>' +
@@ -2884,11 +2992,7 @@
     // Item autocomplete
     var nameInput = tr.querySelector('[data-f="name"]');
     var nameDD = nameInput.parentNode.querySelector('.ac-dropdown');
-    acSearch(nameInput, nameDD, '/api/products',
-      function (p, q) {
-        return '<div class="ac-main">' + acHL(p.name, q) + '</div><div class="ac-sub">' +
-          (p.hsn ? 'HSN: ' + p.hsn + ' \u2022 ' : '') + '\u20B9' + (p.rate || 0) + ' \u2022 GST: ' + (p.gst || 0) + '%</div>';
-      },
+    acSearch(nameInput, nameDD, '/api/products', productAcRender,
       function (p) {
         nameInput.value = p.name;
         var row = nameInput.closest('tr');
@@ -3255,6 +3359,7 @@
       '<button type="submit" class="btn btn-primary btn-lg" style="min-width:140px">Save</button></div></form>';
 
     $content.innerHTML = html;
+    getProductsCache(true);
     sdAddItemRow();
 
     // Event listeners
@@ -3345,7 +3450,7 @@
     var tr = document.createElement('tr');
     tr.id = 'sd-item-' + idx;
     tr.innerHTML =
-      '<td><div class="ac-wrap"><input data-f="name" placeholder="Item name" autocomplete="off"><div class="ac-dropdown"></div></div></td>' +
+      '<td><div class="ac-wrap"><input data-f="name" placeholder="Type item e.g. shirt, pen" autocomplete="off"><div class="ac-dropdown"></div></div></td>' +
       '<td><input data-f="hsn" placeholder="HSN"></td>' +
       '<td><input data-f="size" placeholder="Size"></td>' +
       '<td><input data-f="mrp" type="number" min="0" step="0.01" placeholder="0"></td>' +
@@ -3367,11 +3472,7 @@
     // Item autocomplete
     var nameInput = tr.querySelector('[data-f="name"]');
     var nameDD = nameInput.parentNode.querySelector('.ac-dropdown');
-    acSearch(nameInput, nameDD, '/api/products',
-      function (p, q) {
-        return '<div class="ac-main">' + acHL(p.name, q) + '</div><div class="ac-sub">' +
-          (p.hsn ? 'HSN: ' + p.hsn + ' \u2022 ' : '') + '\u20B9' + (p.rate || 0) + ' \u2022 GST: ' + (p.gst || 0) + '%</div>';
-      },
+    acSearch(nameInput, nameDD, '/api/products', productAcRender,
       function (p) {
         nameInput.value = p.name;
         var row = nameInput.closest('tr');
@@ -4133,6 +4234,7 @@
       '<button type="button" class="btn btn-outline" id="pdCancelBtn">Cancel</button></div></form>';
     $content.innerHTML = html;
 
+    getProductsCache(true);
     // Wire up save + cancel buttons via addEventListener (no inline onclick)
     document.getElementById('pdSaveBtn').addEventListener('click', function() { pdSubmit(docType); });
     document.getElementById('pdCancelBtn').addEventListener('click', function() { window.goTo(meta.newPage.replace('new-','') + 's'); });
@@ -4225,7 +4327,7 @@
     }).join('');
     tr.innerHTML =
       '<td class="row-num" style="text-align:center;color:var(--text-muted);font-weight:500">' + rowNum + '</td>' +
-      '<td data-col="name"' + _pcv('name') + '><div class="ac-wrap"><input class="form-control pd-item-name" placeholder="Item name" autocomplete="off" /><div class="ac-list pd-item-ac"></div></div></td>' +
+      '<td data-col="name"' + _pcv('name') + '><div class="ac-wrap"><input class="form-control pd-item-name" placeholder="Type item e.g. shirt, pen" autocomplete="off" /><div class="ac-list pd-item-ac"></div></div></td>' +
       '<td data-col="hsn"' + _pcv('hsn') + '><input class="form-control pd-item-hsn" placeholder="HSN" /></td>' +
       '<td data-col="size"' + _pcv('size') + '><input class="form-control pd-item-size" placeholder="Size" /></td>' +
       '<td data-col="qty"' + _pcv('qty') + '><input class="form-control pd-item-qty" type="number" value="1" min="0" step="any" /></td>' +
@@ -4251,11 +4353,7 @@
     // Item autocomplete
     var nameInp = tr.querySelector('.pd-item-name');
     var acDiv = tr.querySelector('.pd-item-ac');
-    acSearch(nameInp, acDiv, '/api/products',
-      function (p, q) {
-        return '<div class="ac-main">' + acHL(p.name, q) + '</div>' +
-          '<div class="ac-sub">Rate: ' + formatINR(p.rate || 0) + (p.hsn ? ' \u2022 HSN: ' + p.hsn : '') + '</div>';
-      },
+    acSearch(nameInp, acDiv, '/api/products', productAcRender,
       function (p) {
         nameInp.value = p.name;
         tr.querySelector('.pd-item-hsn').value = p.hsn || '';

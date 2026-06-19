@@ -1537,6 +1537,7 @@ tr:hover td { background:rgba(241,245,249,0.5); }
 }
 .ac-popup .ac-item:last-child { border-bottom:none; }
 .ac-popup .ac-item:hover { background:rgba(13,148,136,0.08); }
+.ac-popup .ac-item.active { background:rgba(13,148,136,0.12); }
 .ac-popup .ac-item .ac-main { font-weight:600; color:var(--text); font-size:0.85rem; }
 .ac-popup .ac-item .ac-sub { font-size:0.75rem; color:var(--text-muted); margin-top:2px; }
 .ac-popup .ac-item b { color:var(--primary); }
