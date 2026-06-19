@@ -41,6 +41,9 @@ async function initDB() {
       ALTER TABLE users ADD COLUMN IF NOT EXISTS logo TEXT DEFAULT '';
       ALTER TABLE users ADD COLUMN IF NOT EXISTS item_settings JSONB DEFAULT '{}';
 
+      ALTER TABLE invoices ADD COLUMN IF NOT EXISTS payment_mode VARCHAR(50) DEFAULT '';
+      ALTER TABLE invoices ADD COLUMN IF NOT EXISTS sale_type VARCHAR(20) DEFAULT 'credit';
+
       CREATE TABLE IF NOT EXISTS invoices (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,

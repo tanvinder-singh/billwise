@@ -119,6 +119,24 @@
   function formatINR(n) {
     return '\u20B9' + Number(n).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
+  function formatPaymentMode(mode) {
+    var labels = {
+      cash: 'Cash',
+      bank_transfer: 'Bank Transfer',
+      upi: 'UPI',
+      cheque: 'Cheque',
+      card: 'Card',
+      credit: 'Credit',
+      other: 'Other'
+    };
+    return labels[mode] || (mode ? String(mode).replace(/_/g, ' ').replace(/\b\w/g, function (c) { return c.toUpperCase(); }) : 'Credit');
+  }
+  function invoicePaymentMode(inv) {
+    if (inv.payment_mode) return inv.payment_mode;
+    if (inv.sale_type === 'cash') return 'cash';
+    if (inv.status === 'paid') return 'cash';
+    return 'credit';
+  }
   function formatDate(d) {
     if (!d) return '-';
     var dt = new Date(d);
@@ -900,10 +918,12 @@
     var rows = list.map(function (inv) {
       var invId = inv.id || inv._id;
       var isPaid = inv.status === 'paid';
+      var payMode = invoicePaymentMode(inv);
       return '<tr style="cursor:pointer" onclick="window.goTo(\'invoice\',\'' + invId + '\')">' +
         '<td><strong>' + inv.invoice_number + '</strong></td><td>' + formatDate(inv.invoice_date) + '</td>' +
         '<td>' + inv.customer_name + '</td><td class="text-right">' + formatINR(inv.total) + '</td>' +
         '<td>' + statusBadge(inv.status) + '</td>' +
+        '<td><span class="payment-mode-badge">' + formatPaymentMode(payMode).toUpperCase() + '</span></td>' +
         '<td class="inv-row-actions" onclick="event.stopPropagation()">' +
           '<button type="button" class="row-action-btn view-btn" onclick="window.goTo(\'invoice\',\'' + invId + '\')" title="View Invoice">' +
             '<svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>' +
@@ -920,13 +940,13 @@
           '</button>' +
         '</td></tr>';
     }).join('');
-    return '<div class="table-wrap"><table><thead><tr><th>Invoice #</th><th>Date</th><th>Customer</th><th class="text-right">Amount</th><th>Status</th><th class="text-center">Actions</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
+    return '<div class="table-wrap"><table><thead><tr><th>Invoice #</th><th>Date</th><th>Customer</th><th class="text-right">Amount</th><th>Status</th><th>Payment</th><th class="text-center">Actions</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
   }
 
   // ── Inline invoice actions (used from table rows) ──
   window.markInvPaid = function (id, total) {
     if (!confirm('Mark this invoice as paid?')) return;
-    api('PATCH', '/api/invoices/' + id, { status: 'paid', amount_paid: total }).then(function (d) {
+    api('PATCH', '/api/invoices/' + id, { status: 'paid', amount_paid: total, payment_mode: 'cash' }).then(function (d) {
       showToast(d.message || 'Marked as paid!', 'success');
       if (currentPage === 'invoices') renderInvoiceList();
       else renderOverview();
@@ -2354,7 +2374,10 @@
       var roundOff = inv.round_off !== undefined ? inv.round_off : (Math.round(totalInclAmount * 100) / 100 !== totalInclAmount ? Math.round(totalInclAmount) - totalInclAmount : 0);
       var grandTotal = inv.total || Math.round(totalInclAmount);
       var amountPaid = inv.amount_paid || 0;
-      var balance = grandTotal - amountPaid;
+      if (inv.status === 'paid' && amountPaid < grandTotal) amountPaid = grandTotal;
+      var balance = Math.max(0, grandTotal - amountPaid);
+      var isFullyPaid = inv.status === 'paid' || balance <= 0;
+      var paymentMode = invoicePaymentMode(inv);
       // You Saved = (MRP total - rate-based subtotal before discount) + discount amount
       var priceBeforeDisc = totalTaxable + totalDiscountAmt;
       var mrpSavings = totalMrpAmount > priceBeforeDisc ? totalMrpAmount - priceBeforeDisc : 0;
@@ -2429,6 +2452,7 @@
       html += '<p><strong>No:</strong> ' + inv.invoice_number + '</p>';
       html += '<p><strong>Date:</strong> ' + formatDateSlash(inv.invoice_date) + '</p>';
       if (inv.due_date) html += '<p><strong>Due:</strong> ' + formatDateSlash(inv.due_date) + '</p>';
+      html += '<p><strong>Payment Mode:</strong> <span class="payment-mode-badge">' + formatPaymentMode(paymentMode) + '</span></p>';
       if (inv.place_of_supply) html += '<p><strong>Place Of Supply:</strong> ' + inv.place_of_supply + '</p>';
       html += '</div></div>';
 
@@ -2543,9 +2567,16 @@
       html += '<div class="inv-words"><strong>Invoice Amount in Words:</strong><br>' + numberToWords(grandTotal) + '</div>';
 
       // Payment info
-      html += '<div class="inv-payment-section"><table>' +
-        '<tr><td>Received</td><td>:</td><td class="text-right">' + formatINR(amountPaid) + '</td></tr>' +
-        '<tr><td>Balance</td><td>:</td><td class="text-right"><strong>' + formatINR(balance) + '</strong></td></tr>';
+      html += '<div class="inv-payment-section"><table>';
+      if (isFullyPaid) {
+        html += '<tr><td>Payment Status</td><td>:</td><td><span class="badge badge-paid">Paid</span></td></tr>' +
+          '<tr><td>Payment Mode</td><td>:</td><td><span class="payment-mode-badge">' + formatPaymentMode(paymentMode).toUpperCase() + '</span></td></tr>' +
+          '<tr><td>Received</td><td>:</td><td class="text-right">' + formatINR(grandTotal) + '</td></tr>';
+      } else {
+        html += '<tr><td>Payment Mode</td><td>:</td><td><span class="payment-mode-badge">' + formatPaymentMode(paymentMode).toUpperCase() + '</span></td></tr>' +
+          '<tr><td>Received</td><td>:</td><td class="text-right">' + formatINR(amountPaid) + '</td></tr>' +
+          '<tr><td>Balance</td><td>:</td><td class="text-right"><strong>' + formatINR(balance) + '</strong></td></tr>';
+      }
       if (youSaved > 0) {
         html += '<tr class="you-saved"><td>You Saved</td><td>:</td><td class="text-right"><strong>' + formatINR(youSaved) + '</strong></td></tr>';
       }
@@ -2616,7 +2647,7 @@
       var markPaidBtn = document.getElementById('markPaidBtn');
       if (markPaidBtn) {
         markPaidBtn.addEventListener('click', function () {
-          api('PATCH', '/api/invoices/' + id, { status: 'paid', amount_paid: inv.total }).then(function (d) {
+          api('PATCH', '/api/invoices/' + id, { status: 'paid', amount_paid: inv.total, payment_mode: 'cash' }).then(function (d) {
             showToast(d.message || 'Marked as paid', 'success');
             renderInvoiceDetail(id);
           });
@@ -3184,7 +3215,10 @@
       total: roundedTotal,
       total_mrp: Math.round(totalMrp * 100) / 100,
       notes: document.getElementById('invNotes').value.trim(),
-      status: saleType === 'cash' ? 'paid' : 'unpaid'
+      sale_type: saleType,
+      payment_mode: saleType === 'cash' ? 'cash' : 'credit',
+      status: saleType === 'cash' ? 'paid' : 'unpaid',
+      amount_paid: saleType === 'cash' ? roundedTotal : 0
     };
 
     var submitBtn = document.querySelector('#invoiceForm button[type="submit"]');

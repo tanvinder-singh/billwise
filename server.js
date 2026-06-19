@@ -877,7 +877,8 @@ app.post('/api/invoices', auth, async (req, res) => {
     const {
       invoice_date, due_date, customer_name, customer_phone, customer_email,
       customer_address, customer_gstin, customer_state, place_of_supply,
-      items, subtotal, cgst, sgst, igst, total, round_off, total_mrp, notes, status
+      items, subtotal, cgst, sgst, igst, total, round_off, total_mrp, notes, status,
+      amount_paid, payment_mode, sale_type
     } = req.body;
 
     if (!customer_name || !items || !items.length) {
@@ -890,6 +891,14 @@ app.post('/api/invoices', auth, async (req, res) => {
     const num = String(count + 1).padStart(4, '0');
     const invoice_number = `${prefix}-${num}`;
 
+    const resolvedSaleType = sale_type === 'cash' ? 'cash' : 'credit';
+    const resolvedStatus = status || (resolvedSaleType === 'cash' ? 'paid' : 'unpaid');
+    const resolvedPaymentMode = payment_mode || (resolvedSaleType === 'cash' ? 'cash' : '');
+    let resolvedAmountPaid = Number(amount_paid) || 0;
+    if (resolvedStatus === 'paid' && resolvedAmountPaid <= 0) {
+      resolvedAmountPaid = Number(total) || 0;
+    }
+
     const inv = await invoices.insert({
       user_id: req.user.id, invoice_number,
       invoice_date: invoice_date || now.toISOString().slice(0, 10),
@@ -899,7 +908,10 @@ app.post('/api/invoices', auth, async (req, res) => {
       customer_state: customer_state || '', place_of_supply: place_of_supply || '',
       items, subtotal: subtotal || 0, cgst: cgst || 0, sgst: sgst || 0,
       igst: igst || 0, total: total || 0, round_off: round_off || 0, total_mrp: total_mrp || 0,
-      amount_paid: 0, notes: notes || '', status: status || 'unpaid',
+      amount_paid: Math.round(resolvedAmountPaid * 100) / 100,
+      payment_mode: resolvedPaymentMode,
+      sale_type: resolvedSaleType,
+      notes: notes || '', status: resolvedStatus,
       created_at: now
     });
 
@@ -957,11 +969,25 @@ app.get('/api/invoices/:id', auth, async (req, res) => {
 
 // Update status
 app.patch('/api/invoices/:id', auth, async (req, res) => {
-  const { status, amount_paid } = req.body;
-  await invoices.update({ id: req.params.id, user_id: req.user.id },
-    { $set: { status: status || 'unpaid', amount_paid: amount_paid || 0 } });
+  const { status, amount_paid, payment_mode } = req.body;
+  const existing = await invoices.findOne({ id: req.params.id, user_id: req.user.id });
+  if (!existing) return res.status(404).json({ error: 'Invoice not found' });
+
+  const setData = {};
+  if (status !== undefined) setData.status = status;
+  if (amount_paid !== undefined) {
+    setData.amount_paid = amount_paid || 0;
+  } else if (status === 'paid') {
+    setData.amount_paid = existing.total || 0;
+  }
+  if (payment_mode !== undefined) {
+    setData.payment_mode = payment_mode;
+  } else if (status === 'paid' && !existing.payment_mode) {
+    setData.payment_mode = 'cash';
+  }
+
+  await invoices.update({ id: req.params.id, user_id: req.user.id }, { $set: setData });
   const inv = await invoices.findOne({ id: req.params.id, user_id: req.user.id });
-  if (!inv) return res.status(404).json({ error: 'Invoice not found' });
   res.json({ invoice: inv, message: 'Invoice updated' });
 });
 
