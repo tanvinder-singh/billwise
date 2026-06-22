@@ -1744,7 +1744,10 @@ app.get('/api/inventory/summary', auth, async (req, res) => {
     let totalValue = 0;
     const enriched = allProducts.map(p => {
       const qty = Number(p.stock_quantity) || 0;
-      const threshold = Number(p.low_stock_threshold) || lowThreshold;
+      const pt = Number(p.low_stock_threshold);
+      const threshold = (p.low_stock_threshold != null && p.low_stock_threshold !== '' && pt > 0)
+        ? pt
+        : lowThreshold;
       const status = qty <= 0 ? 'out' : (qty <= threshold ? 'low' : 'ok');
       if (qty <= 0) outOfStock++;
       else if (qty <= threshold) lowStock++;
@@ -1758,7 +1761,8 @@ app.get('/api/inventory/summary', auth, async (req, res) => {
         total_items: allProducts.length,
         low_stock: lowStock,
         out_of_stock: outOfStock,
-        inventory_value: Math.round(totalValue * 100) / 100
+        inventory_value: Math.round(totalValue * 100) / 100,
+        low_stock_threshold: lowThreshold
       }
     });
   } catch (e) {

@@ -1097,7 +1097,7 @@
           var sq = item.stock_quantity || 0;
           var lt = item.low_stock_threshold || is.low_stock_threshold || 10;
           if (sq <= 0) badges += '<span class="item-badge badge-stock out">Out of Stock</span>';
-          else if (sq <= lt) badges += '<span class="item-badge badge-stock low">Low: ' + sq + '</span>';
+          else if (sq <= lt) badges += '<span class="item-badge badge-stock low" title="At or below alert level of ' + lt + '">Low Stock</span>';
           else badges += '<span class="item-badge badge-stock">Stock: ' + sq + '</span>';
         }
         if (is.batch_tracking && item.batch_no) {
@@ -1179,9 +1179,11 @@
     manual: 'Manual Adjustment'
   };
 
-  function stockStatusBadge(status, qty) {
+  function stockStatusBadge(status, qty, threshold) {
     if (status === 'out') return '<span class="item-badge badge-stock out">Out of Stock</span>';
-    if (status === 'low') return '<span class="item-badge badge-stock low">Low: ' + qty + '</span>';
+    if (status === 'low') {
+      return '<span class="item-badge badge-stock low" title="Stock at or below alert level of ' + threshold + '">Low Stock</span>';
+    }
     return '<span class="item-badge badge-stock">In Stock</span>';
   }
 
@@ -1194,7 +1196,7 @@
 
   function renderInventoryStockRows(products) {
     if (!products.length) {
-      return '<tr><td colspan="8" class="empty-state">No items yet. Add items or create invoices to build inventory.</td></tr>';
+      return '<tr><td colspan="9" class="empty-state">No items yet. Add items or create invoices to build inventory.</td></tr>';
     }
     return products.map(function (p) {
       var pid = p.id || p._id;
@@ -1205,7 +1207,8 @@
         '<td>' + esc(p.hsn || '-') + '</td>' +
         '<td>' + esc(p.unit || 'Pcs') + '</td>' +
         '<td class="text-right"><strong>' + qty + '</strong></td>' +
-        '<td>' + stockStatusBadge(p.stock_status, qty) + '</td>' +
+        '<td class="text-right" style="color:var(--text-muted)">' + (p.low_threshold != null ? p.low_threshold : '-') + '</td>' +
+        '<td>' + stockStatusBadge(p.stock_status, qty, p.low_threshold) + '</td>' +
         '<td class="text-right">' + formatINR(p.rate || 0) + '</td>' +
         '<td class="text-right">' + formatINR(value) + '</td>' +
         '<td class="text-center inv-row-actions">' +
@@ -1316,7 +1319,10 @@
       var products = summary.products || [];
       var stats = summary.stats || {};
 
-      var html = '<div class="stats-grid" style="margin-bottom:20px">' +
+      var alertThreshold = stats.low_stock_threshold || ((currentUser && currentUser.item_settings && currentUser.item_settings.low_stock_threshold) || 10);
+      var html = '<p style="color:var(--text-muted);font-size:0.875rem;margin:0 0 16px">Items show <strong>Low Stock</strong> when quantity is at or below the alert level (<strong>' + alertThreshold + '</strong>). Change this in <a href="#" onclick="window.goTo(\'settings\',\'stock\');return false" style="color:var(--primary)">Settings → Stock &amp; Inventory</a> or per item when editing.</p>';
+
+      html += '<div class="stats-grid" style="margin-bottom:20px">' +
         statCard('Total Items', stats.total_items || 0, '') +
         statCard('Low Stock', stats.low_stock || 0, 'warning') +
         statCard('Out of Stock', stats.out_of_stock || 0, 'danger') +
@@ -1335,7 +1341,7 @@
           '<button type="button" class="btn btn-outline btn-sm" onclick="window.goTo(\'items\')">Manage Items</button>' +
         '</div>';
         html += '<div class="table-wrap"><table><thead><tr>' +
-          '<th>Item</th><th>HSN</th><th>Unit</th><th class="text-right">Stock</th><th>Status</th>' +
+          '<th>Item</th><th>HSN</th><th>Unit</th><th class="text-right">Stock</th><th>Alert At</th><th>Status</th>' +
           '<th class="text-right">Rate</th><th class="text-right">Value</th><th class="text-center">Actions</th>' +
         '</tr></thead><tbody id="invStockBody">' + renderInventoryStockRows(products) + '</tbody></table></div>';
       } else {
